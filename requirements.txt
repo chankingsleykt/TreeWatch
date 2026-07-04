@@ -10,3 +10,10 @@ xgboost
 python-dotenv
 earthengine-api
 geemap
+fastapi 
+uvicorn
+pydantic
+typing
+shapely
+pillow
+rasterio

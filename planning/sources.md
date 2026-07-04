@@ -1,1 +1,2 @@
 * Types of Forests: https://www.wwf.org.uk/learn/landscapes/forests
+    * Distribution: https://www.researchgate.net/figure/Distribution-of-the-three-main-forest-types-considered-for-the-global-forest-non-forest_fig2_319701013
