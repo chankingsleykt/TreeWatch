@@ -36,11 +36,9 @@ def get_data_bbox(polygon: shapely.Polygon, TEST_YEAR: int = 24)->np.ndarray:
         "mask": A numpy array with the same length as data, True only if treecover > 50 and lossyear = 0 or lossyear > TEST_YEAR
         "(height, width)": a tuple of the initial bounding box, for reconverting each row in the dataframe to pixel in the polygon
     """
-    # Step 1: Create bounding box from polygon
+
+    # create geojson of the polygon's bounding box, then convert to EE geometry
     min_lon, min_lat, max_lon, max_lat = polygon.bounds
-    bbox = box(min_lon, min_lat, max_lon, max_lat)
-    
-    # Step 2: Convert bbox to GeoJSON format
     bbox_geojson = {
         "type": "Polygon",
         "coordinates": [[
@@ -51,10 +49,7 @@ def get_data_bbox(polygon: shapely.Polygon, TEST_YEAR: int = 24)->np.ndarray:
             [min_lon, min_lat]
         ]]
     }
-
-    # Step 3: Create Earth Engine geometry from bbox GeoJSON
     ee_geometry = ee.Geometry(bbox_geojson)
-
 
     # extract landsat bands
     landsat_image_lag = process_yearly_landsat(TEST_YEAR-1, 1, 1, TEST_YEAR, 1, 1)
@@ -80,95 +75,32 @@ def get_data_bbox(polygon: shapely.Polygon, TEST_YEAR: int = 24)->np.ndarray:
     native_scale = target_projection.nominalScale().getInfo()
     crs_val = target_projection.crs().getInfo()
     
-    # 4. Request the raw binary NPY file URL
-    # Because we already aligned Landsat, this download will be mathematically pristine.
-    url = combined_image.getDownloadURL({
-        'region': ee_geometry,
-        'scale': native_scale,
-        'crs': crs_val,
-        'format': 'NPY'
-    })
+    # request the raw binary NPY file URL
+    try:
+        url = combined_image.getDownloadURL({
+            'region': ee_geometry,
+            'scale': native_scale,
+            'crs': crs_val,
+            'format': 'NPY'
+        })
     
-    # 5. Execute the binary download (bypasses JSON text bloat)
-    response = requests.get(url)
-    response.raise_for_status() 
-    
+        response = requests.get(url)
+        response.raise_for_status() 
+    except ee.ee_exception.EEException as e:
+        if "must be less than or equal to" in str(e):
+            print('polygon too large!')
+            return None, None, None
+        else:
+            raise e
+        
     # 6. Load directly into C-level contiguous memory
     raw_array = np.load(io.BytesIO(response.content))
     height, width = raw_array.shape
-    test_landsat_pd = pd.DataFrame(raw_array.flatten())
-    # print(test_landsat_pd)
-    treecover_mask = (test_landsat_pd['treecover2000'] > 50)
-    lossyear_0_mask = (test_landsat_pd['lossyear'] == 0)
-    lossyear_after_mask = (test_landsat_pd['lossyear'] > TEST_YEAR-2000)
-    # print(treecover_mask)
-    # valid_mask = (test_landsat_pd['treecover2000'] > 50) & (test_landsat_pd['lossyear'] == 0 | test_landsat_pd['lossyear'] > TEST_YEAR-2000)
-    return test_landsat_pd[BANDS_IN_ORDER], treecover_mask & (lossyear_0_mask | lossyear_after_mask), (height, width) 
-
-
-
-    # # sample ee_gemetry from landsat_image
-    # landsat_feature = landsat_image.sampleRectangle(region=ee_geometry, defaultValue=0)
-    # try:
-    #     # This is where the network call actually happens.
-    #     # If it's too big, Earth Engine will instantly reject it here.
-    #     feature_dict = landsat_feature.getInfo()['properties']
-        
-    # except ee.ee_exception.EEException as e:
-    #     # Catch the exact limit error natively
-    #     if "Too many pixels" in str(e):
-    #         print("Payload too large. Rejecting.")
-    #         return None, None, None
-    #     else:
-    #         # If it's a different Earth Engine error, raise it so you know
-    #         raise e
-    band_names_in_order = ["NBR_delta_lag1","NBR_lag1","NDMI_delta_lag1","NDMI_lag1","NDVI_delta_lag1","NDVI_lag1","SR_B4_delta_lag1","SR_B4_lag1","SR_B5_delta_lag1","SR_B5_lag1","SR_B6_delta_lag1","SR_B6_lag1","SR_B7_delta_lag1","SR_B7_lag1","NBR_lag0","NDMI_lag0","NDVI_lag0","SR_B4_lag0","SR_B5_lag0","SR_B6_lag0","SR_B7_lag0"] # in the same order as xgboost's features
-    # band_arrays = [np.array(feature_dict[b], dtype=np.float32) for b in band_names]
-    # height, width = band_arrays[0].shape # essential to save this because we're about to transform the 2d rectangle into a 1d list for the model
-    # print('height:', height, 'width:', width)
-    # landsat_pd = pd.DataFrame(np.column_stack([arr.ravel() for arr in band_arrays]))
-    # landsat_pd.columns = band_names
-    
-    # Step 4: Load Hansen Global Forest Change treecover dataset
-    # Hansen dataset has annual treecover loss and gain data
-    # Using the treecover percentage layer and lossyear layer
-    treecover = hansen.select('treecover2000')  # Baseline treecover in year 2000
-    lossyear = hansen.select('lossyear')  # Year of tree loss
-    
-    # Step 5: Sample the treecover and lossyear data at 30m resolution (Landsat resolution)
-    treecover_clipped = treecover.clipToCollection(ee.FeatureCollection([landsat_feature]))
-    lossyear_clipped = lossyear.clipToCollection(ee.FeatureCollection([landsat_feature]))
-    
-    # Step 6: Convert to numpy arrays
-    treecover_array = treecover_clipped.sampleRectangle(
-        defaultValue=0,
-        region=landsat_feature.geometry(),
-    )
-    
-    lossyear_array = lossyear_clipped.sampleRectangle(
-        defaultValue=0,
-        region=landsat_feature.geometry(),
-    )
-    
-    # Step 7: Extract the bands
-    treecover_data = treecover_array.get('treecover2000').getInfo()
-    # print(treecover_array)
-    treecover_np = np.array(treecover_data, dtype=np.float32)
-    # print(treecover_np)
-    lossyear_data = lossyear_array.get('lossyear').getInfo()
-    lossyear_np = np.array(lossyear_data, dtype=np.int32)
-    
-    # Step 8: Set pixels to -1 if:
-    # - treecover < 50, OR
-    # - lossyear > 0 AND lossyear <= loss_year_threshold (already deforested)
-    treecover_mask = (treecover_np > 50).ravel()
-    lossyear_mask = ((lossyear_np == 0) | (lossyear_np > TEST_YEAR-2000)).ravel()
-    valid_mask = treecover_mask & lossyear_mask
-    # landsat_pd = landsat_pd.where(pd.Series(treecover_mask == False, index=landsat_pd.index), axis=0).where(pd.Series(lossyear_mask == False, index=landsat_pd.index), axis=0)
-
-    
-    return landsat_pd, valid_mask, (height, width)
-
+    landsat_hansen_pd = pd.DataFrame(raw_array.flatten())
+    treecover_mask = (landsat_hansen_pd['treecover2000'] > 50)
+    lossyear_0_mask = (landsat_hansen_pd['lossyear'] == 0)
+    lossyear_after_mask = (landsat_hansen_pd['lossyear'] > TEST_YEAR-2000)
+    return landsat_hansen_pd[BANDS_IN_ORDER], treecover_mask & (lossyear_0_mask | lossyear_after_mask), (height, width) 
 
 
 
