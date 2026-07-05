@@ -99,6 +99,21 @@
             // 3. Get raw binary array buffer
             const arrayBuffer = await response.arrayBuffer();
 
+                    // --- THE DIAGNOSTIC FIX ---
+            // TIFF files are physically required to begin with 'II' (73, 73) for Little-Endian 
+            // or 'MM' (77, 77) for Big-Endian. 
+            const view = new Uint8Array(arrayBuffer);
+            
+            if (view[0] !== 73 && view[0] !== 77) {
+                // If the first byte isn't 73 or 77, FastAPI did not send a binary image.
+                // It almost certainly sent a JSON error or text traceback.
+                // We decode the raw binary buffer back into UTF-8 text so you can read the error.
+                const badPayload = new TextDecoder().decode(arrayBuffer);
+                console.error("CRITICAL ERROR: Backend did NOT send a TIFF. It sent this text:", badPayload);
+                alert("Backend crashed! Check the browser console to read the Python traceback.");
+                return; // Stop execution before geotiff.js attempts to parse text as an image
+            }
+
             // 4. Parse the GeoTIFF using geotiff.js
             const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
             const image = await tiff.getImage();
@@ -115,31 +130,27 @@
             canvas.height = height;
             const ctx = canvas.getContext('2d');
             const imageData = ctx.createImageData(width, height);
-
             // Loop through the data and assign RGBA values
             for (let i = 0; i < probabilityData.length; i++) {
                 const val = probabilityData[i]; // Value between 0.0 and 1.0
-                const index = i * 4;            // 4 bytes per pixel (R, G, B, A)
+                const index = i * 4;            // 4 bytes per pixel (R, G, B, A) 
                 
-                if (Number.isNaN(val)) {
+                if (val == -1) { // still forested
+                    imageData.data[index + 0] = 0;                        
+                    imageData.data[index + 1] = 128;                         
+                    imageData.data[index + 2] = 0;  
+                    imageData.data[index + 3] = 255;  
+                } else if (val == 1) { // deforested
+                    imageData.data[index + 0] = 255;                        
+                    imageData.data[index + 1] = 71;                         
+                    imageData.data[index + 2] = 87; 
+                    imageData.data[index + 3] = 255;
+                } else {
                     // Make the pixel completely invisible
                     imageData.data[index + 0] = 0; 
                     imageData.data[index + 1] = 0; 
                     imageData.data[index + 2] = 0; 
                     imageData.data[index + 3] = 0; 
-                } else {
-                    // Paint the valid pixel
-                    if (val > 0.5) { // deforested
-                        imageData.data[index + 0] = 255;                        
-                        imageData.data[index + 1] = 71;                         
-                        imageData.data[index + 2] = 87;  
-                    } else {
-                        imageData.data[index + 0] = 0;                        
-                        imageData.data[index + 1] = 128;                         
-                        imageData.data[index + 2] = 0;  
-                    }                 
-                    normalized_val_strength = Math.abs(val-0.5)/0.5     
-                    imageData.data[index + 3] = Math.round(normalized_val_strength*255);      
                 }
             }
 

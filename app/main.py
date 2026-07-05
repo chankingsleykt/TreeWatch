@@ -12,10 +12,12 @@ from xgboost import XGBClassifier
 from rasterio.transform import from_bounds
 from rasterio.io import MemoryFile
 from rasterio.features import geometry_mask
-from ee_connection import eliminate_non_forest_and_route_model
+from ee_connection import get_data_bbox
 
 
 models = {}
+
+TEST_YEAR = 2024
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -44,6 +46,7 @@ app = FastAPI(title="ForestWatch", lifespan=lifespan)
 
 TROPIC_LAT = 23.5
 BOREAL_LAT = 50.0 
+THRESHOLD = 0.5
 
 origins = [
     "http://localhost:3000",    # React default port
@@ -85,43 +88,77 @@ async def predict(polygon: pydantic_models.GeoJSONFeature):
     polygon = shape(polygon.geometry)
     min_lon, min_lat, max_lon, max_lat = polygon.bounds
 
-    eliminate_non_forest_and_route_model(polygon)
+    centroid = polygon.centroid
+    data, mask, dimensions = get_data_bbox(polygon, TEST_YEAR)
+    if data is None:
+        return None
+    height, width = dimensions
+    
+    if -TROPIC_LAT < centroid.y < TROPIC_LAT:
+        # tropical
+        active_model=models['tropical']
+    elif TROPIC_LAT < centroid.y < BOREAL_LAT:
+        # temperate north
+        active_model=models['temperate']
+    elif -90 < centroid.y < -TROPIC_LAT:
+        # temperate south
+        active_model=models['temperate']
+    elif BOREAL_LAT < centroid.y < 90:
+        # boreal
+        active_model=models['boreal']
 
+    data_masked = data[mask]
+    
+    # 2. Run Inference ONLY on the valid forests
+    raw_probs = active_model.predict_proba(data_masked)[:, 1]
+    if len(raw_probs) > 0 and raw_probs.max() > raw_probs.min(): # rescale to be between 0 and 1
+        valid_probs = (raw_probs - raw_probs.min()) / (raw_probs.max() - raw_probs.min())
+    else:
+        valid_probs = raw_probs
+    # print(list(raw_probs))
+    # print(list(valid_probs))
+    predictions = np.where(raw_probs > THRESHOLD, 1, -1)
 
-    # Phase 3: The "Dummy" Math (Bypassing ML)
-    # Generate a 20x20 matrix of random probabilities between 0.0 and 1.0
-    probability_matrix = np.random.rand(20, 20).astype(np.float32)
-    # print(probability_matrix.shape)
-
-
+    # 3. Create the blank geographic canvas
+    total_pixels = height * width
+    flat_output = np.full(total_pixels, 0, dtype=np.float32)
+    
+    # 4. The Magic Spatial Injection
+    # We use the exact same valid_mask to inject the predictions back into 
+    # their precise geographic coordinates in the 1D line.
+    flat_output[mask] = predictions
+    
+    # 5. Fold the map back into 2D for Rasterio
+    final_2d_map = flat_output.reshape(dimensions)
+    
     # Phase 4: Rasterization with Rasterio
     # 1. Calculate Affine Transform
-    transform = from_bounds(min_lon, min_lat, max_lon, max_lat, 20, 20)
+    transform = from_bounds(min_lon, min_lat, max_lon, max_lat, height, width)
 
     mask = geometry_mask(
         [polygon],
-        out_shape=(20, 20),
+        out_shape=dimensions,
         transform=transform,
         invert=True # 'True' means pixels INSIDE the polygon get a True boolean
     )
 
-    probability_matrix[~mask] = np.nan
-
+    final_2d_map[~mask] = 0
+    print(final_2d_map)
     # 2. Write to Buffer
     # MemoryFile acts as a virtual filesystem for rasterio
     with MemoryFile() as memfile:
         with memfile.open(
             driver='GTiff',
-            height=20,
-            width=20,
+            height=height,
+            width=width,
             count=1,                  # Single band
-            dtype=probability_matrix.dtype,
+            dtype=final_2d_map.dtype,
             crs='EPSG:4326',          # Standard WGS84 coordinates
             transform=transform,
-            nodata=np.nan
+            nodata=0
         ) as dataset:
             # Write the numpy array to the first band
-            dataset.write(probability_matrix, 1)
+            dataset.write(final_2d_map, 1)
 
         # Extract the raw bytes from the MemoryFile
         tiff_bytes = memfile.read()
