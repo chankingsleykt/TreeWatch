@@ -6,12 +6,11 @@ from shapely.geometry import box
 import os
 import requests
 import io
+import sys
 from dotenv import load_dotenv
-
-TROPIC_LAT = 23.5
-BOREAL_LAT = 50.0 
-MAX_PIXELS = 262144
-BANDS_IN_ORDER = ["NBR_delta_lag1","NBR_lag1","NDMI_delta_lag1","NDMI_lag1","NDVI_delta_lag1","NDVI_lag1","SR_B4_delta_lag1","SR_B4_lag1","SR_B5_delta_lag1","SR_B5_lag1","SR_B6_delta_lag1","SR_B6_lag1","SR_B7_delta_lag1","SR_B7_lag1","NBR_lag0","NDMI_lag0","NDVI_lag0","SR_B4_lag0","SR_B5_lag0","SR_B6_lag0","SR_B7_lag0"] # in the same order as xgboost's features
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "."))
+sys.path.append(project_root)
+from config import BANDS_IN_ORDER, TEST_YEAR
 
 
 load_dotenv()
@@ -20,7 +19,7 @@ project_id = os.getenv("GOOGLE_CLOUD_PROJECT_ID") # insert your id here
 ee.Authenticate(force=False)
 ee.Initialize(project=project_id)
 
-def get_data_bbox(polygon: shapely.Polygon, TEST_YEAR: int = 24)->np.ndarray:
+def get_data_bbox(polygon: shapely.Polygon)->np.ndarray:
     """
     Creates a GeoJSON of the bounding box containing the polygon, extracts the landsat image bands, filters by Hansen treecover and lossyear data,
     and returns a pandas DataFrame with the landsat image data, and nan where treecover < 50 or if it's been deforested before TEST_YEAR
@@ -63,9 +62,7 @@ def get_data_bbox(polygon: shapely.Polygon, TEST_YEAR: int = 24)->np.ndarray:
     target_projection = hansen.select('treecover2000').projection()
     print('landsat projection:', landsat_image.projection().getInfo())
     print('target projection:', target_projection.getInfo())
-    print('before resampling')
     landsat_image = landsat_image.resample('bilinear').reproject(crs=target_projection)
-    print('after resampling, before rect sampling')
 
 
     combined_image = landsat_image.addBands([
@@ -81,7 +78,7 @@ def get_data_bbox(polygon: shapely.Polygon, TEST_YEAR: int = 24)->np.ndarray:
             'region': ee_geometry,
             'scale': native_scale,
             'crs': crs_val,
-            'format': 'NPY'
+            'format': 'GEO_TIFF'
         })
     
         response = requests.get(url)

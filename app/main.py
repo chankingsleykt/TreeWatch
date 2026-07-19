@@ -13,11 +13,10 @@ from rasterio.transform import from_bounds
 from rasterio.io import MemoryFile
 from rasterio.features import geometry_mask
 from ee_connection import get_data_bbox
-
+from config import TROPIC_LAT, BOREAL_LAT, THRESHOLD
+from prediction_helpers import route_model_and_predict
 
 models = {}
-
-TEST_YEAR = 2024
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -43,10 +42,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="ForestWatch", lifespan=lifespan)
 
-
-TROPIC_LAT = 23.5
-BOREAL_LAT = 50.0 
-THRESHOLD = 0.5
 
 origins = [
     "http://localhost:3000",    # React default port
@@ -89,60 +84,32 @@ async def predict(polygon: pydantic_models.GeoJSONFeature):
     min_lon, min_lat, max_lon, max_lat = polygon.bounds
 
     centroid = polygon.centroid
-    data, mask, dimensions = get_data_bbox(polygon, TEST_YEAR)
+    data, mask, dimensions = get_data_bbox(polygon)
     if data is None:
         return None
     height, width = dimensions
-    
-    if -TROPIC_LAT < centroid.y < TROPIC_LAT:
-        # tropical
-        active_model=models['tropical']
-    elif TROPIC_LAT < centroid.y < BOREAL_LAT:
-        # temperate north
-        active_model=models['temperate']
-    elif -90 < centroid.y < -TROPIC_LAT:
-        # temperate south
-        active_model=models['temperate']
-    elif BOREAL_LAT < centroid.y < 90:
-        # boreal
-        active_model=models['boreal']
-
     data_masked = data[mask]
-    
-    # 2. Run Inference ONLY on the valid forests
-    raw_probs = active_model.predict_proba(data_masked)[:, 1]
-    if len(raw_probs) > 0 and raw_probs.max() > raw_probs.min(): # rescale to be between 0 and 1
-        valid_probs = (raw_probs - raw_probs.min()) / (raw_probs.max() - raw_probs.min())
-    else:
-        valid_probs = raw_probs
-    # print(list(raw_probs))
-    # print(list(valid_probs))
-    predictions = np.where(raw_probs > THRESHOLD, 1, -1)
+    predictions = route_model_and_predict(centroid, data_masked, models)
 
-    # 3. Create the blank geographic canvas
+    # create blank geographic canvas
     total_pixels = height * width
     flat_output = np.full(total_pixels, 0, dtype=np.float32)
     
-    # 4. The Magic Spatial Injection
-    # We use the exact same valid_mask to inject the predictions back into 
-    # their precise geographic coordinates in the 1D line.
+    # We use the exact same valid_mask to inject the predictions back into their precise geographic coordinates in the 1D line.
     flat_output[mask] = predictions
     
-    # 5. Fold the map back into 2D for Rasterio
+    # fold the map back into 2D for Rasterio
     final_2d_map = flat_output.reshape(dimensions)
-    
-    # Phase 4: Rasterization with Rasterio
-    # 1. Calculate Affine Transform
     transform = from_bounds(min_lon, min_lat, max_lon, max_lat, height, width)
 
-    mask = geometry_mask(
+    polygon_mask = geometry_mask(
         [polygon],
         out_shape=dimensions,
         transform=transform,
         invert=True # 'True' means pixels INSIDE the polygon get a True boolean
     )
 
-    final_2d_map[~mask] = 0
+    final_2d_map[~polygon_mask] = -9999.0
     print(final_2d_map)
     # 2. Write to Buffer
     # MemoryFile acts as a virtual filesystem for rasterio
