@@ -84,7 +84,7 @@ async def predict(polygon: pydantic_models.GeoJSONFeature):
     min_lon, min_lat, max_lon, max_lat = polygon.bounds
 
     centroid = polygon.centroid
-    data, mask, dimensions = get_data_bbox(polygon)
+    data, mask, dimensions, transform = get_data_bbox(polygon)
     if data is None:
         return None
     height, width = dimensions
@@ -100,7 +100,7 @@ async def predict(polygon: pydantic_models.GeoJSONFeature):
     
     # fold the map back into 2D for Rasterio
     final_2d_map = flat_output.reshape(dimensions)
-    transform = from_bounds(min_lon, min_lat, max_lon, max_lat, height, width)
+    # transform = from_bounds(min_lon, min_lat, max_lon, max_lat, height, width)
 
     polygon_mask = geometry_mask(
         [polygon],
@@ -109,7 +109,7 @@ async def predict(polygon: pydantic_models.GeoJSONFeature):
         invert=True # 'True' means pixels INSIDE the polygon get a True boolean
     )
 
-    final_2d_map[~polygon_mask] = -9999.0
+    final_2d_map[~polygon_mask] = 0
     print(final_2d_map)
     # 2. Write to Buffer
     # MemoryFile acts as a virtual filesystem for rasterio

@@ -11,6 +11,8 @@ from dotenv import load_dotenv
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "."))
 sys.path.append(project_root)
 from config import BANDS_IN_ORDER, TEST_YEAR
+from rasterio.transform import Affine
+
 
 
 load_dotenv()
@@ -71,14 +73,24 @@ def get_data_bbox(polygon: shapely.Polygon)->np.ndarray:
     ])
     native_scale = target_projection.nominalScale().getInfo()
     crs_val = target_projection.crs().getInfo()
+
+    # CRITICAL: We ask Earth Engine for the exact geographic footprint it intends to export
+    # This prevents the "bleeding halo" bug by accounting for grid snapping.
+    export_region = combined_image.geometry().intersection(ee_geometry).bounds()
+    snapped_bounds = export_region.coordinates().getInfo()[0]
     
-    # request the raw binary NPY file URL
+    # snapped_bounds is a list of [lon, lat] pairs starting from bottom-left
+    # We extract the true Top-Left anchor for the Affine transform
+    true_min_lon = min([coord[0] for coord in snapped_bounds])
+    true_max_lat = max([coord[1] for coord in snapped_bounds])
+    
+    # request the data from Earth Engine as a GeoTIFF
     try:
         url = combined_image.getDownloadURL({
             'region': ee_geometry,
             'scale': native_scale,
             'crs': crs_val,
-            'format': 'GEO_TIFF'
+            'format': 'NPY'
         })
     
         response = requests.get(url)
@@ -86,19 +98,32 @@ def get_data_bbox(polygon: shapely.Polygon)->np.ndarray:
     except ee.ee_exception.EEException as e:
         if "must be less than or equal to" in str(e):
             print('polygon too large!')
-            return None, None, None
+            return None, None, None, None
         else:
             raise e
         
-    # 6. Load directly into C-level contiguous memory
+    # 4. Instant Memory Mapping
     raw_array = np.load(io.BytesIO(response.content))
     height, width = raw_array.shape
+    
+    # 5. Build the Exact Affine Transform locally (zero overhead)
+    # The scale determines pixel width (positive) and height (negative for EPSG 4326)
+    pixel_size_degrees = native_scale / 111320.0 # Approximate meters to degrees at equator
+    
+    # For EPSG:4326, pixel width is positive, pixel height is negative
+    true_transform = Affine.translation(true_min_lon, true_max_lat) * Affine.scale(pixel_size_degrees, -pixel_size_degrees)
+
+    # 6. Tabular Conversion & Masking
     landsat_hansen_pd = pd.DataFrame(raw_array.flatten())
+    
     treecover_mask = (landsat_hansen_pd['treecover2000'] > 50)
     lossyear_0_mask = (landsat_hansen_pd['lossyear'] == 0)
-    lossyear_after_mask = (landsat_hansen_pd['lossyear'] > TEST_YEAR-2000)
-    return landsat_hansen_pd[BANDS_IN_ORDER], treecover_mask & (lossyear_0_mask | lossyear_after_mask), (height, width) 
-
+    lossyear_after_mask = (landsat_hansen_pd['lossyear'] > TEST_YEAR - 2000)
+    
+    valid_mask = treecover_mask & (lossyear_0_mask | lossyear_after_mask)
+    
+    # Return the ultra-fast NPY data alongside the manually calculated true_transform
+    return landsat_hansen_pd[BANDS_IN_ORDER], valid_mask, (height, width), true_transform
 
 
 def mask_clouds_landsat(image:ee.Image):
