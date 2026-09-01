@@ -21,7 +21,7 @@ project_id = os.getenv("GOOGLE_CLOUD_PROJECT_ID") # insert your id here
 ee.Authenticate(force=False)
 ee.Initialize(project=project_id)
 
-def get_data_bbox(polygon: shapely.Polygon)->np.ndarray:
+def get_data_bbox(polygon: shapely.Polygon) -> dict:
     """
     Creates a GeoJSON of the bounding box containing the polygon, extracts the landsat image bands, filters by Hansen treecover and lossyear data,
     and returns a pandas DataFrame with the landsat image data, and nan where treecover < 50 or if it's been deforested before TEST_YEAR
@@ -32,10 +32,12 @@ def get_data_bbox(polygon: shapely.Polygon)->np.ndarray:
                            Pixels with lossyear <= this value are marked as -1.
         
     Returns:
-        tuple of the form (data, mask, (height, width)) where:
-        "data": A pandas DataFrame with the landsat image bands
-        "mask": A numpy array with the same length as data, True only if treecover > 50 and lossyear = 0 or lossyear > TEST_YEAR
-        "(height, width)": a tuple of the initial bounding box, for reconverting each row in the dataframe to pixel in the polygon
+        dict with keys:
+        "data": A pandas DataFrame with the landsat image bands, or None on error
+        "mask": A numpy array with the same length as data, True only if treecover > 50 and lossyear = 0 or lossyear > TEST_YEAR, or None on error
+        "coords": (height, width) tuple of the bounding box grid dimensions, or None on error
+        "transform": Affine transform for reconverting each row in the dataframe to a pixel in the polygon, or None on error
+        "error": "polygon too large" if the request exceeds Earth Engine size limits, the original error message for other failures, or None on success
     """
 
     # create geojson of the polygon's bounding box, then convert to EE geometry
@@ -50,7 +52,7 @@ def get_data_bbox(polygon: shapely.Polygon)->np.ndarray:
             [min_lon, min_lat]
         ]]
     }
-    ee_geometry = ee.Geometry(bbox_geojson)
+    bbox_geometry = ee.Geometry(bbox_geojson)
 
     # extract landsat bands
     landsat_image_lag = process_yearly_landsat(TEST_YEAR-1, 1, 1, TEST_YEAR, 1, 1)
@@ -70,13 +72,13 @@ def get_data_bbox(polygon: shapely.Polygon)->np.ndarray:
     combined_image = landsat_image.addBands([
         hansen.select('treecover2000'), 
         hansen.select('lossyear')
-    ])
+    ]) # combined_image contains the landsat and hansen bands together at hansen projection 
     native_scale = target_projection.nominalScale().getInfo()
     crs_val = target_projection.crs().getInfo()
 
     # CRITICAL: We ask Earth Engine for the exact geographic footprint it intends to export
     # This prevents the "bleeding halo" bug by accounting for grid snapping.
-    export_region = combined_image.geometry().intersection(ee_geometry).bounds()
+    export_region = combined_image.geometry().intersection(bbox_geometry).bounds()
     snapped_bounds = export_region.coordinates().getInfo()[0]
     
     # snapped_bounds is a list of [lon, lat] pairs starting from bottom-left
@@ -84,10 +86,10 @@ def get_data_bbox(polygon: shapely.Polygon)->np.ndarray:
     true_min_lon = min([coord[0] for coord in snapped_bounds])
     true_max_lat = max([coord[1] for coord in snapped_bounds])
     
-    # request the data from Earth Engine as a GeoTIFF
+    # request the data from Earth Engine as NPY
     try:
         url = combined_image.getDownloadURL({
-            'region': ee_geometry,
+            'region': bbox_geometry,
             'scale': native_scale,
             'crs': crs_val,
             'format': 'NPY'
@@ -98,16 +100,14 @@ def get_data_bbox(polygon: shapely.Polygon)->np.ndarray:
     except ee.ee_exception.EEException as e:
         if "must be less than or equal to" in str(e):
             print('polygon too large!')
-            return None, None, None, None
-        else:
-            raise e
+            return {"data": None, "mask": None, "coords": None, "transform": None, "error": "polygon too large"}
+        return {"data": None, "mask": None, "coords": None, "transform": None, "error": str(e)}
         
     # 4. Instant Memory Mapping
     raw_array = np.load(io.BytesIO(response.content))
     height, width = raw_array.shape
     
-    # 5. Build the Exact Affine Transform locally (zero overhead)
-    # The scale determines pixel width (positive) and height (negative for EPSG 4326)
+    # 5. Calculate the Affine Transform so that we can convert the DataFrame back to the original projection
     pixel_size_degrees = native_scale / 111320.0 # Approximate meters to degrees at equator
     
     # For EPSG:4326, pixel width is positive, pixel height is negative
@@ -122,8 +122,13 @@ def get_data_bbox(polygon: shapely.Polygon)->np.ndarray:
     
     valid_mask = treecover_mask & (lossyear_0_mask | lossyear_after_mask)
     
-    # Return the ultra-fast NPY data alongside the manually calculated true_transform
-    return landsat_hansen_pd[BANDS_IN_ORDER], valid_mask, (height, width), true_transform
+    return {
+        "data": landsat_hansen_pd[BANDS_IN_ORDER],
+        "mask": valid_mask,
+        "coords": (height, width),
+        "transform": true_transform,
+        "error": None,
+    }
 
 
 def mask_clouds_landsat(image:ee.Image):

@@ -22,3 +22,7 @@
 
 # June 25, 2026
 * Trained three models for each of the three forest types. Models successfully predicted deforestation in the forests they were trained on, in 2025. While accuracy did decrease on new forests of the same type, f1 scores remain respectable at 0.70. Now development of the app can begin.
+
+# Sep 1, 2026
+* Refactored `get_data_bbox` to return a dict (`data`, `mask`, `coords`, `transform`, `error`) instead of a tuple; updated `main.py`, tests, and removed unused import in `prediction_helpers.py`.
+* Frontend now removes the MapBox Draw feature when backend crashes to avoid repeated calls

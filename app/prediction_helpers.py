@@ -1,5 +1,3 @@
-from shapely.geometry import shape
-from ee_connection import get_data_bbox
 import numpy as np
 
 from config import TROPIC_LAT, BOREAL_LAT, THRESHOLD

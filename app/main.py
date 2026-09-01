@@ -59,35 +59,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Endpoint 1: Serves dynamic spatial features
-@app.get("/api/locations")
-async def get_locations():
-    return {
-        "type": "FeatureCollection",
-        "features": [
-            {
-                "type": "Feature",
-                "properties": {"name": "Central Park", "description": "New York City"},
-                "geometry": {"type": "Point", "coordinates": [-73.9654, 40.7829]}
-            },
-            {
-                "type": "Feature",
-                "properties": {"name": "Golden Gate Park", "description": "San Francisco"},
-                "geometry": {"type": "Point", "coordinates": [-122.4862, 37.7694]}
-            }
-        ]
-    }
-
 @app.post("/api/predict")
 async def predict(polygon: pydantic_models.GeoJSONFeature):
     polygon = shape(polygon.geometry)
     min_lon, min_lat, max_lon, max_lat = polygon.bounds
 
     centroid = polygon.centroid
-    data, mask, dimensions, transform = get_data_bbox(polygon)
-    if data is None:
-        return None
-    height, width = dimensions
+    result = get_data_bbox(polygon)
+    if result["error"] is not None:
+        return result['error']
+    data = result["data"]
+    mask = result["mask"]
+    height, width = result["coords"]
+    transform = result["transform"]
     data_masked = data[mask]
     predictions = route_model_and_predict(centroid, data_masked, models)
 
@@ -99,12 +83,11 @@ async def predict(polygon: pydantic_models.GeoJSONFeature):
     flat_output[mask] = predictions
     
     # fold the map back into 2D for Rasterio
-    final_2d_map = flat_output.reshape(dimensions)
-    # transform = from_bounds(min_lon, min_lat, max_lon, max_lat, height, width)
+    final_2d_map = flat_output.reshape((height, width))
 
     polygon_mask = geometry_mask(
         [polygon],
-        out_shape=dimensions,
+        out_shape=(height, width),
         transform=transform,
         invert=True # 'True' means pixels INSIDE the polygon get a True boolean
     )

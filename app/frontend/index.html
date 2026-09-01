@@ -111,6 +111,7 @@
                 const badPayload = new TextDecoder().decode(arrayBuffer);
                 console.error("CRITICAL ERROR: Backend did NOT send a TIFF. It sent this text:", badPayload);
                 alert("Backend crashed! Check the browser console to read the Python traceback.");
+                draw.deleteAll();
                 return; // Stop execution before geotiff.js attempts to parse text as an image
             }
 

@@ -1,0 +1,1 @@
+In agent mode, after every change you make, log the change under today's date in /planning/log.md. If an entry for today's date already exists, add another bullet point.
