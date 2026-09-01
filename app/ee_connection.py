@@ -1,8 +1,8 @@
 import shapely
 import ee
+import math
 import numpy as np
-import pandas as pd 
-from shapely.geometry import box
+import pandas as pd
 import os
 import requests
 import io
@@ -13,13 +13,36 @@ sys.path.append(project_root)
 from config import BANDS_IN_ORDER, TEST_YEAR
 from rasterio.transform import Affine
 
-
+# Hansen native projection — avoids synchronous EE getInfo() round trips
+HANSEN_CRS = "EPSG:4326"
+HANSEN_SCALE_M = 30
 
 load_dotenv()
 project_id = os.getenv("GOOGLE_CLOUD_PROJECT_ID") # insert your id here
 
 ee.Authenticate(force=False)
 ee.Initialize(project=project_id)
+
+
+def snap_bbox_to_grid(
+    min_lon: float,
+    min_lat: float,
+    max_lon: float,
+    max_lat: float,
+    scale_m: float = HANSEN_SCALE_M,
+) -> tuple[float, float, float, float]:
+    """Snap a WGS84 bbox outward to the export pixel grid at ``scale_m`` meters."""
+    center_lat = (min_lat + max_lat) / 2
+    lat_rad = math.radians(center_lat)
+    pixel_width = scale_m / (111320.0 * math.cos(lat_rad))
+    pixel_height = scale_m / 111320.0
+
+    west = math.floor(min_lon / pixel_width) * pixel_width
+    south = math.floor(min_lat / pixel_height) * pixel_height
+    east = math.ceil(max_lon / pixel_width) * pixel_width
+    north = math.ceil(max_lat / pixel_height) * pixel_height
+    return west, south, east, north
+
 
 def get_data_bbox(polygon: shapely.Polygon) -> dict:
     """
@@ -40,16 +63,17 @@ def get_data_bbox(polygon: shapely.Polygon) -> dict:
         "error": "polygon too large" if the request exceeds Earth Engine size limits, the original error message for other failures, or None on success
     """
 
-    # create geojson of the polygon's bounding box, then convert to EE geometry
+    # Snap bbox to the 30 m grid so the affine transform matches EE's export footprint
     min_lon, min_lat, max_lon, max_lat = polygon.bounds
+    west, south, east, north = snap_bbox_to_grid(min_lon, min_lat, max_lon, max_lat)
     bbox_geojson = {
         "type": "Polygon",
         "coordinates": [[
-            [min_lon, min_lat],
-            [max_lon, min_lat],
-            [max_lon, max_lat],
-            [min_lon, max_lat],
-            [min_lon, min_lat]
+            [west, south],
+            [east, south],
+            [east, north],
+            [west, north],
+            [west, south]
         ]]
     }
     bbox_geometry = ee.Geometry(bbox_geojson)
@@ -63,35 +87,21 @@ def get_data_bbox(polygon: shapely.Polygon) -> dict:
     hansen = ee.Image('UMD/hansen/global_forest_change_2025_v1_13')
 
     # reshape the landsat image to hansen level
-    target_projection = hansen.select('treecover2000').projection()
-    print('landsat projection:', landsat_image.projection().getInfo())
-    print('target projection:', target_projection.getInfo())
-    landsat_image = landsat_image.resample('bilinear').reproject(crs=target_projection)
-
+    landsat_image = landsat_image.resample('bilinear').reproject(
+        crs=HANSEN_CRS, scale=HANSEN_SCALE_M
+    )
 
     combined_image = landsat_image.addBands([
-        hansen.select('treecover2000'), 
+        hansen.select('treecover2000'),
         hansen.select('lossyear')
-    ]) # combined_image contains the landsat and hansen bands together at hansen projection 
-    native_scale = target_projection.nominalScale().getInfo()
-    crs_val = target_projection.crs().getInfo()
+    ])
 
-    # CRITICAL: We ask Earth Engine for the exact geographic footprint it intends to export
-    # This prevents the "bleeding halo" bug by accounting for grid snapping.
-    export_region = combined_image.geometry().intersection(bbox_geometry).bounds()
-    snapped_bounds = export_region.coordinates().getInfo()[0]
-    
-    # snapped_bounds is a list of [lon, lat] pairs starting from bottom-left
-    # We extract the true Top-Left anchor for the Affine transform
-    true_min_lon = min([coord[0] for coord in snapped_bounds])
-    true_max_lat = max([coord[1] for coord in snapped_bounds])
-    
     # request the data from Earth Engine as NPY
     try:
         url = combined_image.getDownloadURL({
             'region': bbox_geometry,
-            'scale': native_scale,
-            'crs': crs_val,
+            'scale': HANSEN_SCALE_M,
+            'crs': HANSEN_CRS,
             'format': 'NPY'
         })
     
@@ -106,12 +116,13 @@ def get_data_bbox(polygon: shapely.Polygon) -> dict:
     # 4. Instant Memory Mapping
     raw_array = np.load(io.BytesIO(response.content))
     height, width = raw_array.shape
-    
-    # 5. Calculate the Affine Transform so that we can convert the DataFrame back to the original projection
-    pixel_size_degrees = native_scale / 111320.0 # Approximate meters to degrees at equator
-    
-    # For EPSG:4326, pixel width is positive, pixel height is negative
-    true_transform = Affine.translation(true_min_lon, true_max_lat) * Affine.scale(pixel_size_degrees, -pixel_size_degrees)
+
+    # Derive pixel size from snapped corners and actual array dims (handles EE off-by-one)
+    pixel_width = (east - west) / width
+    pixel_height = (north - south) / height
+    true_transform = Affine.translation(west, north) * Affine.scale(
+        pixel_width, -pixel_height
+    )
 
     # 6. Tabular Conversion & Masking
     landsat_hansen_pd = pd.DataFrame(raw_array.flatten())
@@ -171,7 +182,6 @@ def get_indices(img_collection: ee.ImageCollection) -> ee.Image:
     Learn more about spectral indices here: https://www.geo.university/pages/spectral-indices-in-remote-sensing-and-how-to-interpret-them"""
     # Select original bands
     selected_bands = img_collection.select(['SR_B4', 'SR_B5', 'SR_B6', 'SR_B7']).median()
-    # print('Available bands:', img_collection.first().bandNames().getInfo())
     # Calculate indices using normalizedDifference
     ndvi = selected_bands.normalizedDifference(['SR_B5', 'SR_B4']).rename('NDVI') # NIR - Red (SR_B5 - SR_B4)
     nbr = selected_bands.normalizedDifference(['SR_B5', 'SR_B7']).rename('NBR')   # NIR - SWIR2 (SR_B5 - SR_B7)

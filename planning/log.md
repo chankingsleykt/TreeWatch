@@ -26,3 +26,5 @@
 # Sep 1, 2026
 * Refactored `get_data_bbox` to return a dict (`data`, `mask`, `coords`, `transform`, `error`) instead of a tuple; updated `main.py`, tests, and removed unused import in `prediction_helpers.py`.
 * Frontend now removes the MapBox Draw feature when backend crashes to avoid repeated calls
+* Hardcoded Hansen `EPSG:4326` / 30 m in `get_data_bbox` and removed all `getInfo()` calls to cut EE round-trip latency
+* Added local bbox grid snapping so affine transforms stay aligned with EE exports without `getInfo()`
