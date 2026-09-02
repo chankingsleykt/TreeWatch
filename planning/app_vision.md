@@ -11,7 +11,6 @@ ForestWatch is a **Live Change Detector (Nowcasting)** application, not a foreca
 
 ## 3. System Constraints & UX Rules
 * **Area Limit:** User-drawn polygons are strictly capped at **500 square kilometers** to prevent `Error Code 3` memory crashes from the Earth Engine API.
-* **Thresholding:** The UI slider controls a **Probability Threshold** (Confidence), not an evaluation metric. The slider operates entirely on the frontend GPU via WebGL shaders, instantly repainting map tiles without triggering backend re-computes.
 * **Visual Integrity:** The app renders raw 30-meter pixels. Aggregation grids are strictly forbidden, as majority-voting erases the narrow, sub-pixel signals of illegal logging roads.
 
 ## 4. The Execution Pipeline (Step-by-Step)
@@ -24,4 +23,4 @@ This is the strict chronological flow of a single user request:
 5.  **Inference:** FastAPI passes the NumPy matrix into the active XGBoost model (`xgboost.predict()`), generating a 1D array of probabilities (0.0 to 1.0).
 6.  **Rasterization:** FastAPI utilizes `rasterio` to stitch the 1D probability array back into a georeferenced 2D image (Cloud Optimized GeoTIFF).
 7.  **Transport 2:** FastAPI serves the GeoTIFF to the frontend.
-8.  **Rendering:** The frontend mapping library overlays the GeoTIFF on the map. The GPU shader applies the user's Probability Threshold slider, painting confident pixels red and leaving everything else transparent.
+8.  **Rendering:** The frontend mapping library overlays the GeoTIFF on the map. The GPU shader paints confident pixels red/green and leaves everything else transparent.
