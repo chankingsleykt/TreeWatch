@@ -47,9 +47,25 @@
     MapboxDraw.constants.classes.CONTROL_BASE  = 'maplibregl-ctrl';
     MapboxDraw.constants.classes.CONTROL_PREFIX = 'maplibregl-ctrl-';
     MapboxDraw.constants.classes.CONTROL_GROUP = 'maplibregl-ctrl-group';
+
+    // Inline equivalent of @mapbox/mapbox-gl-draw-static-mode (no npm/bundler needed)
+    const StaticMode = {
+        onSetup: function () {
+            this.setActionableState(); // disables trash/combine/uncombine while static
+            return {};
+        },
+        toDisplayFeatures: function (state, geojson, display) {
+            display(geojson);
+        }
+    };
+
+    const modes = MapboxDraw.modes;
+    modes.static = StaticMode;
+
     // Initialize Mapbox Draw
     const draw = new MapboxDraw({
         displayControlsDefault: false,
+        modes: modes,
         controls: {
             polygon: true,
             trash: true
@@ -74,15 +90,43 @@
         if (map.getSource('prediction-overlay')) map.removeSource('prediction-overlay');
     });
 
-    async function sendPolygonToBackend(e) {
-        // 1. Capture GeoJSON
-        const data = draw.getAll();
-        if (data.features.length === 0) return;
+    // Prevent re-entrancy: changeMode / render can re-fire draw.update and loop /api/predict
+    let isPredicting = false;
+    let ignoreDrawEvents = false;
 
-        // Get the most recently drawn feature
-        const latestFeature = data.features[data.features.length - 1];
+    function lockDraw() {
+        if (draw.getMode() !== 'static') {
+            draw.changeMode('static');
+        }
+    }
+
+    // After draw.create, Mapbox Draw switches to simple_select *after* firing the event,
+    // which would undo an immediate changeMode('static'). Re-assert the lock.
+    map.on('draw.modechange', () => {
+        if (isPredicting) lockDraw();
+    });
+
+    async function sendPolygonToBackend(e) {
+        if (ignoreDrawEvents) return;
+        if (isPredicting) {
+            lockDraw();
+            return;
+        }
+        isPredicting = true;
+        lockDraw();
+        // Run again on next macrotask in case Draw's post-create simple_select wins the race
+        setTimeout(() => {
+            if (isPredicting) lockDraw();
+        }, 0);
 
         try {
+            // 1. Capture GeoJSON
+            const data = draw.getAll();
+            if (data.features.length === 0) return;
+
+            // Get the most recently drawn feature
+            const latestFeature = data.features[data.features.length - 1];
+
             // 2. API Call to FastAPI
             const response = await fetch('api/predict', {
                 method: 'POST',
@@ -164,9 +208,20 @@
             // 6. Calculate Bounding Box and Render
             const coordinates = calculateBoundingBox(latestFeature.geometry.coordinates[0]);
             renderImageOverlay(dataUrl, coordinates);
-
         } catch (error) {
             console.error("Failed to process polygon:", error);
+            draw.deleteAll();
+        } finally {
+            // Clear predicting before leaving static so modechange does not re-lock.
+            // ignoreDrawEvents blocks any draw.update fired by the mode restore.
+            ignoreDrawEvents = true;
+            isPredicting = false;
+            try {
+                draw.changeMode('simple_select');
+            } catch (err) {
+                console.error('Failed to restore draw mode:', err);
+            }
+            ignoreDrawEvents = false;
         }
     }
 

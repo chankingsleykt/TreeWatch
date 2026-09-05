@@ -28,3 +28,8 @@
 * Frontend now removes the MapBox Draw feature when backend crashes to avoid repeated calls
 * Hardcoded Hansen `EPSG:4326` / 30 m in `get_data_bbox` and removed all `getInfo()` calls to cut EE round-trip latency
 * Added local bbox grid snapping so affine transforms stay aligned with EE exports without `getInfo()`
+
+# Sep 5, 2026
+* Added inline Mapbox Draw `StaticMode` (equivalent to `@mapbox/mapbox-gl-draw-static-mode`) and registered it on `MapboxDraw.modes`; lock drawing during `/api/predict` then restore `simple_select`
+* Fixed `/api/predict` infinite loop: `isPredicting` guard ignores re-entrant `draw.update` fired by `changeMode`; restore `simple_select` in `finally` before clearing the flag
+* Fixed shape still draggable during predict: re-assert `static` after Draw’s post-`create` switch to `simple_select` (`draw.modechange` + `setTimeout(0)`)
