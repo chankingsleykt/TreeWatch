@@ -36,4 +36,5 @@
 * Fixed shape still draggable during predict: re-assert `static` after Draw’s post-`create` switch to `simple_select` (`draw.modechange` + `setTimeout(0)`)
 * Fixed stack overflow from `draw.modechange`↔`changeMode('static')` recursion by only re-locking when `e.mode !== 'static'`; pass `featureId` into `renderImageOverlay`
 * Fixed remaining stack overflow: removed `draw.modechange` re-lock; defer `sendPolygonToBackend` with `setTimeout(0)` so `changeMode('static')` is not called inside Draw’s create/update stack
+* Disabled Draw toolbar (polygon/trash) during predict via `#map.draw-locked`; deferred modechange snap-back if draw mode is forced while predicting
 * Allow for creating multiple features and maintaining drawn pixels

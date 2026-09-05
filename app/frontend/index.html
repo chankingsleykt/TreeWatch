@@ -28,6 +28,13 @@
         .mapboxgl-ctrl-icon {
             transform: scale(1.5); 
         }
+
+        /* Block Mapbox Draw toolbar while a prediction is in flight */
+        #map.draw-locked .maplibregl-ctrl-group button {
+            pointer-events: none;
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -108,7 +115,23 @@
         if (draw.getMode() !== 'static') {
             draw.changeMode('static');
         }
+        // StaticMode does not disable the toolbar — block polygon/trash clicks during predict
+        map.getContainer().classList.add('draw-locked');
     }
+
+    function unlockDraw() {
+        map.getContainer().classList.remove('draw-locked');
+        draw.changeMode('simple_select');
+    }
+
+    // If a mode change slips through (e.g. before lock CSS applies), snap back outside Draw's stack
+    map.on('draw.modechange', (e) => {
+        if (isPredicting && e.mode !== 'static') {
+            setTimeout(() => {
+                if (isPredicting) lockDraw();
+            }, 0);
+        }
+    });
 
     /** POST a GeoJSON feature to /api/predict and return the GeoTIFF ArrayBuffer. */
     async function sendFeatureToBackend(feature) {
@@ -204,7 +227,7 @@
             ignoreDrawEvents = true;
             isPredicting = false;
             try {
-                draw.changeMode('simple_select');
+                unlockDraw();
             } catch (err) {
                 console.error('Failed to restore draw mode:', err);
             }
