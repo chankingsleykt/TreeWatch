@@ -102,9 +102,11 @@
     });
 
     // Listen for deletion to clean up the overlay
-    map.on('draw.delete', () => {
-        if (map.getLayer('prediction-overlay-layer')) map.removeLayer('prediction-overlay-layer');
-        if (map.getSource('prediction-overlay')) map.removeSource('prediction-overlay');
+    map.on('draw.delete', (e) => {
+        const featureId = e.features[0].id;
+        console.log('Deleted Feature ID:', featureId);
+        if (map.getLayer('prediction-overlay-layer-' + featureId)) map.removeLayer('prediction-overlay-layer-' + featureId);
+        if (map.getSource('prediction-overlay-' + featureId)) map.removeSource('prediction-overlay-' + featureId);
     });
 
     // Prevent re-entrancy: changeMode / render can re-fire draw.update and loop /api/predict
