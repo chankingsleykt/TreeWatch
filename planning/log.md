@@ -30,6 +30,10 @@
 * Added local bbox grid snapping so affine transforms stay aligned with EE exports without `getInfo()`
 
 # Sep 5, 2026
+* Refactored `sendPolygonToBackend` into `sendFeatureToBackend` (POST + TIFF validation), `parseAndPaintGeoTIFF` (parse/paint/overlay), and orchestrator still used by `draw.create` / `draw.update`
 * Added inline Mapbox Draw `StaticMode` (equivalent to `@mapbox/mapbox-gl-draw-static-mode`) and registered it on `MapboxDraw.modes`; lock drawing during `/api/predict` then restore `simple_select`
 * Fixed `/api/predict` infinite loop: `isPredicting` guard ignores re-entrant `draw.update` fired by `changeMode`; restore `simple_select` in `finally` before clearing the flag
 * Fixed shape still draggable during predict: re-assert `static` after Draw’s post-`create` switch to `simple_select` (`draw.modechange` + `setTimeout(0)`)
+* Fixed stack overflow from `draw.modechange`↔`changeMode('static')` recursion by only re-locking when `e.mode !== 'static'`; pass `featureId` into `renderImageOverlay`
+* Fixed remaining stack overflow: removed `draw.modechange` re-lock; defer `sendPolygonToBackend` with `setTimeout(0)` so `changeMode('static')` is not called inside Draw’s create/update stack
+* Allow for creating multiple features and maintaining drawn pixels
