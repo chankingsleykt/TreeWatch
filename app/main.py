@@ -10,12 +10,10 @@ from PIL import Image
 import io
 from contextlib import asynccontextmanager
 from xgboost import XGBClassifier
-from rasterio.transform import from_bounds
 from rasterio.io import MemoryFile
-from rasterio.features import geometry_mask
 from ee_connection import get_data_bbox
 import config
-from prediction_helpers import route_model_and_predict
+from prediction_helpers import route_model_and_predict, values_to_raster
 
 models = {}
 
@@ -67,6 +65,13 @@ async def update_year(body: dict = Body(...)):
     config.TEST_YEAR = year
     return {"message": f"Year updated to {year}"}
 
+@app.post("/api/toggle-compare")
+async def toggle_compare(body: dict = Body(...)):
+    compare = body.get('compare')
+    print(f"Toggling compare to {compare}")
+    config.COMPARE = compare
+    return {"message": f"Compare toggled to {compare}"}
+
 @app.post("/api/predict")
 async def predict(polygon: pydantic_models.GeoJSONFeature):
     polygon = shape(polygon.geometry)
@@ -81,50 +86,37 @@ async def predict(polygon: pydantic_models.GeoJSONFeature):
     height, width = result["coords"]
     transform = result["transform"]
     data_masked = data[mask]
-    predictions = route_model_and_predict(centroid, data_masked, models)
+    features = data_masked[config.BANDS_IN_ORDER]
+    predictions = route_model_and_predict(centroid, features, models)
+    # Match prediction encoding: 1 = loss, -1 = no loss (within valid forest mask)
+    hansen_truth = np.where(data_masked['loss'].to_numpy(), 1, -1).astype(np.float32)
 
-    # create blank geographic canvas
-    total_pixels = height * width
-    flat_output = np.full(total_pixels, 0, dtype=np.float32)
-    
-    # We use the exact same valid_mask to inject the predictions back into their precise geographic coordinates in the 1D line.
-    flat_output[mask] = predictions
-    
-    # fold the map back into 2D for Rasterio
-    final_2d_map = flat_output.reshape((height, width))
+    prediction_map = values_to_raster(predictions, mask, height, width, polygon, transform)
+    hansen_map = values_to_raster(hansen_truth, mask, height, width, polygon, transform)
+    print(prediction_map)
 
-    polygon_mask = geometry_mask(
-        [polygon],
-        out_shape=(height, width),
-        transform=transform,
-        invert=True # 'True' means pixels INSIDE the polygon get a True boolean
-    )
-
-    final_2d_map[~polygon_mask] = 0
-    print(final_2d_map)
-    # 2. Write to Buffer
-    # MemoryFile acts as a virtual filesystem for rasterio
+    # Write 2-band GeoTIFF: band 1 = prediction, band 2 = Hansen ground truth
     with MemoryFile() as memfile:
         with memfile.open(
             driver='GTiff',
             height=height,
             width=width,
-            count=1,                  # Single band
-            dtype=final_2d_map.dtype,
-            crs='EPSG:4326',          # Standard WGS84 coordinates
+            count=2,
+            dtype=prediction_map.dtype,
+            crs='EPSG:4326',
             transform=transform,
             nodata=0
         ) as dataset:
-            # Write the numpy array to the first band
-            dataset.write(final_2d_map, 1)
+            dataset.write(prediction_map, 1)
+            dataset.write(hansen_map, 2)
 
-        # Extract the raw bytes from the MemoryFile
         tiff_bytes = memfile.read()
 
-    # 3. Return Response
     return Response(content=tiff_bytes, media_type="image/tiff")
 
-# Endpoint 2: Serves the MapLibre Map UI and static frontend assets (e.g. app.js)
+
+
+
 @app.get("/", response_class=HTMLResponse)
 async def get_map():
     with open("frontend/index.html", "r") as f:

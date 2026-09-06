@@ -51,12 +51,10 @@ def get_data_bbox(polygon: shapely.Polygon) -> dict:
     
     Args:
         polygon: A Shapely Polygon geometry
-        TEST_YEAR: Year threshold for tree loss (e.g., 24 for year 2024).
-                           Pixels with lossyear <= this value are marked as -1.
         
     Returns:
         dict with keys:
-        "data": A pandas DataFrame with the landsat image bands, or None on error
+        "data": A pandas DataFrame with the landsat image bands and the true Hansen loss values, or None on error
         "mask": A numpy array with the same length as data, True only if treecover > 50 and lossyear = 0 or lossyear > TEST_YEAR, or None on error
         "coords": (height, width) tuple of the bounding box grid dimensions, or None on error
         "transform": Affine transform for reconverting each row in the dataframe to a pixel in the polygon, or None on error
@@ -125,17 +123,23 @@ def get_data_bbox(polygon: shapely.Polygon) -> dict:
     )
 
     # 6. Tabular Conversion & Masking
+    hansen_year = config.TEST_YEAR - 2000
     landsat_hansen_pd = pd.DataFrame(raw_array.flatten())
     
     treecover_mask = (landsat_hansen_pd['treecover2000'] > 50)
     lossyear_0_mask = (landsat_hansen_pd['lossyear'] == 0)
-    lossyear_after_mask = (landsat_hansen_pd['lossyear'] > config.TEST_YEAR - 2000)
+    lossyear_after_mask = (landsat_hansen_pd['lossyear'] > hansen_year)
     
     valid_mask = treecover_mask & (lossyear_0_mask | lossyear_after_mask)
-    print(landsat_hansen_pd.head())
-    print(landsat_hansen_pd['lossyear'].unique())
+    print(landsat_hansen_pd['lossyear'].sort_values().unique())
+
+    data = landsat_hansen_pd[config.BANDS_IN_ORDER].copy()
+    loss = (landsat_hansen_pd['lossyear'] == hansen_year)
+    data['loss'] = loss
+    print(data['loss'].value_counts())
+    print(data.head())
     return {
-        "data": landsat_hansen_pd[config.BANDS_IN_ORDER],
+        "data": data,
         "mask": valid_mask,
         "coords": (height, width),
         "transform": true_transform,

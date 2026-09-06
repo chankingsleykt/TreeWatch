@@ -40,3 +40,7 @@
 * Disabled Draw toolbar (polygon/trash) during predict via `#map.draw-locked`; deferred modechange snap-back if draw mode is forced while predicting
 * Allow for creating multiple features and maintaining drawn pixels
 * Added ability to select a 2001–2026 year range slider and change the year of the data, testing still neede
+
+# Sep 6, 2026
+* Fixed pandas `SettingWithCopyWarning` in `get_data_bbox` by copying the band-selected DataFrame before assigning `loss`
+* Extracted `values_to_raster` in `prediction_helpers.py`; `/api/predict` now exports a 2-band GeoTIFF (prediction + Hansen ground truth from `data_masked['loss']`)
