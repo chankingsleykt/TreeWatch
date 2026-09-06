@@ -30,6 +30,7 @@
 * Added local bbox grid snapping so affine transforms stay aligned with EE exports without `getInfo()`
 
 # Sep 5, 2026
+* Moved frontend map logic from inline `<script>` in `index.html` into `frontend/app.js`; mounted `StaticFiles` so FastAPI serves it
 * Refactored `sendPolygonToBackend` into `sendFeatureToBackend` (POST + TIFF validation), `parseAndPaintGeoTIFF` (parse/paint/overlay), and orchestrator still used by `draw.create` / `draw.update`
 * Added inline Mapbox Draw `StaticMode` (equivalent to `@mapbox/mapbox-gl-draw-static-mode`) and registered it on `MapboxDraw.modes`; lock drawing during `/api/predict` then restore `simple_select`
 * Fixed `/api/predict` infinite loop: `isPredicting` guard ignores re-entrant `draw.update` fired by `changeMode`; restore `simple_select` in `finally` before clearing the flag

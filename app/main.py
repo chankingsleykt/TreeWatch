@@ -2,6 +2,7 @@ from typing import Annotated
 from fastapi import FastAPI, Body, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 import pydantic_models
 from shapely.geometry import shape
 import numpy as np
@@ -116,8 +117,10 @@ async def predict(polygon: pydantic_models.GeoJSONFeature):
     # 3. Return Response
     return Response(content=tiff_bytes, media_type="image/tiff")
 
-# Endpoint 2: Serves the MapLibre Map UI
+# Endpoint 2: Serves the MapLibre Map UI and static frontend assets (e.g. app.js)
 @app.get("/", response_class=HTMLResponse)
 async def get_map():
     with open("frontend/index.html", "r") as f:
         return f.read()
+
+app.mount("/", StaticFiles(directory="frontend"), name="frontend")
