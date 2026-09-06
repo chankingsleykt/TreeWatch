@@ -119,15 +119,30 @@ async function sendFeatureToBackend(feature) {
     return arrayBuffer;
 }
 
-/** Parse a GeoTIFF ArrayBuffer, paint class values onto a canvas, and overlay on the map. */
+/** RGB for class value: -1 forest, 1 loss; null if nodata/outside. */
+function classColor(val, forestRGB, lossRGB) {
+    if (val == -1) return forestRGB;
+    if (val == 1) return lossRGB;
+    return null;
+}
+
+/** Parse a GeoTIFF ArrayBuffer, paint class values onto a canvas, and overlay on the map.
+ *  Band 0 = prediction; band 1 (if present) = Hansen truth, blended underneath as darker colors. */
 async function parseAndPaintGeoTIFF(arrayBuffer, feature, featureId) {
     const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
     const image = await tiff.getImage();
     const rasters = await image.readRasters();
 
     const probabilityData = rasters[0];
+    const trueData = rasters.length > 1 ? rasters[1] : null;
     const width = image.getWidth();
     const height = image.getHeight();
+
+    const PRED_FOREST = [0, 128, 0];
+    const PRED_LOSS = [255, 71, 87];
+    const TRUE_FOREST = [0, 72, 0];       // darker green
+    const TRUE_LOSS = [140, 35, 45];      // darker red
+    const PRED_ALPHA = 0.7;               // prediction dominates the blend
 
     const canvas = document.createElement('canvas');
     canvas.width = width;
@@ -136,25 +151,36 @@ async function parseAndPaintGeoTIFF(arrayBuffer, feature, featureId) {
     const imageData = ctx.createImageData(width, height);
 
     for (let i = 0; i < probabilityData.length; i++) {
-        const val = probabilityData[i];
+        const pred = probabilityData[i];
         const index = i * 4;
+        const predRGB = classColor(pred, PRED_FOREST, PRED_LOSS);
 
-        if (val == -1) { // still forested
-            imageData.data[index + 0] = 0;
-            imageData.data[index + 1] = 128;
-            imageData.data[index + 2] = 0;
-            imageData.data[index + 3] = 255;
-        } else if (val == 1) { // deforested
-            imageData.data[index + 0] = 255;
-            imageData.data[index + 1] = 71;
-            imageData.data[index + 2] = 87;
-            imageData.data[index + 3] = 255;
-        } else {
-            imageData.data[index + 0] = 0;
-            imageData.data[index + 1] = 0;
-            imageData.data[index + 2] = 0;
-            imageData.data[index + 3] = 0;
+        let r = 0, g = 0, b = 0, a = 0;
+
+        if (trueData) {
+            const truthRGB = classColor(trueData[i], TRUE_FOREST, TRUE_LOSS);
+            if (truthRGB && predRGB) {
+                // Darker truth base + brighter prediction on top
+                r = Math.round(predRGB[0] * PRED_ALPHA + truthRGB[0] * (1 - PRED_ALPHA));
+                g = Math.round(predRGB[1] * PRED_ALPHA + truthRGB[1] * (1 - PRED_ALPHA));
+                b = Math.round(predRGB[2] * PRED_ALPHA + truthRGB[2] * (1 - PRED_ALPHA));
+                a = 255;
+            } else if (predRGB) {
+                [r, g, b] = predRGB;
+                a = 255;
+            } else if (truthRGB) {
+                [r, g, b] = truthRGB;
+                a = 255;
+            }
+        } else if (predRGB) {
+            [r, g, b] = predRGB;
+            a = 255;
         }
+
+        imageData.data[index + 0] = r;
+        imageData.data[index + 1] = g;
+        imageData.data[index + 2] = b;
+        imageData.data[index + 3] = a;
     }
 
     ctx.putImageData(imageData, 0, 0);

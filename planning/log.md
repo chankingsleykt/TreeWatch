@@ -45,3 +45,4 @@
 * Fixed pandas `SettingWithCopyWarning` in `get_data_bbox` by copying the band-selected DataFrame before assigning `loss`
 * Extracted `values_to_raster` in `prediction_helpers.py`; `/api/predict` now exports a 2-band GeoTIFF (prediction + Hansen ground truth from `data_masked['loss']`)
 * `/api/predict` only adds Hansen band when `data_masked` has a `loss` column (omitted for 2026 in `get_data_bbox`)
+* `parseAndPaintGeoTIFF` blends Hansen truth (darker green/red) under prediction when band 1 is present
