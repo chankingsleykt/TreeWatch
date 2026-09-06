@@ -88,27 +88,31 @@ async def predict(polygon: pydantic_models.GeoJSONFeature):
     data_masked = data[mask]
     features = data_masked[config.BANDS_IN_ORDER]
     predictions = route_model_and_predict(centroid, features, models)
-    # Match prediction encoding: 1 = loss, -1 = no loss (within valid forest mask)
-    hansen_truth = np.where(data_masked['loss'].to_numpy(), 1, -1).astype(np.float32)
-
     prediction_map = values_to_raster(predictions, mask, height, width, polygon, transform)
-    hansen_map = values_to_raster(hansen_truth, mask, height, width, polygon, transform)
     print(prediction_map)
 
-    # Write 2-band GeoTIFF: band 1 = prediction, band 2 = Hansen ground truth
+    include_hansen = 'loss' in data_masked.columns
+    hansen_map = None
+    if include_hansen:
+        # Match prediction encoding: 1 = loss, -1 = no loss (within valid forest mask)
+        hansen_truth = np.where(data_masked['loss'].to_numpy(), 1, -1).astype(np.float32)
+        hansen_map = values_to_raster(hansen_truth, mask, height, width, polygon, transform)
+
+    band_count = 2 if include_hansen else 1
     with MemoryFile() as memfile:
         with memfile.open(
             driver='GTiff',
             height=height,
             width=width,
-            count=2,
+            count=band_count,
             dtype=prediction_map.dtype,
             crs='EPSG:4326',
             transform=transform,
             nodata=0
         ) as dataset:
             dataset.write(prediction_map, 1)
-            dataset.write(hansen_map, 2)
+            if include_hansen:
+                dataset.write(hansen_map, 2)
 
         tiff_bytes = memfile.read()
 

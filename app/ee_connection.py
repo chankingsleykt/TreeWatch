@@ -134,9 +134,10 @@ def get_data_bbox(polygon: shapely.Polygon) -> dict:
     print(landsat_hansen_pd['lossyear'].sort_values().unique())
 
     data = landsat_hansen_pd[config.BANDS_IN_ORDER].copy()
-    loss = (landsat_hansen_pd['lossyear'] == hansen_year)
-    data['loss'] = loss
-    print(data['loss'].value_counts())
+    if hansen_year != 26:
+        loss = (landsat_hansen_pd['lossyear'] == hansen_year) | (landsat_hansen_pd['lossyear'] == 25)
+        data['loss'] = loss
+        print(data['loss'].value_counts())
     print(data.head())
     return {
         "data": data,
