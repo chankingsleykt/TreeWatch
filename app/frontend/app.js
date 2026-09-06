@@ -61,6 +61,7 @@ map.on('draw.update', (e) => {
 map.on('draw.delete', (e) => {
     const featureId = e.features[0].id;
     console.log('Deleted Feature ID:', featureId);
+    geotiffCache.delete(featureId);
     if (map.getLayer('prediction-overlay-layer-' + featureId)) map.removeLayer('prediction-overlay-layer-' + featureId);
     if (map.getSource('prediction-overlay-' + featureId)) map.removeSource('prediction-overlay-' + featureId);
 });
@@ -126,15 +127,23 @@ function classColor(val, forestRGB, lossRGB) {
     return null;
 }
 
+/** Cache of last GeoTIFF per feature so compare toggle can re-paint without /api/predict. */
+const geotiffCache = new Map(); // featureId -> { arrayBuffer, feature }
+
+/** When false, Hansen band is ignored (trueData treated as null) on paint. */
+let compareHansen = true;
+
 /** Parse a GeoTIFF ArrayBuffer, paint class values onto a canvas, and overlay on the map.
- *  Band 0 = prediction; band 1 (if present) = Hansen truth, blended underneath as darker colors. */
+ *  Band 0 = prediction; band 1 (if present) = Hansen truth, blended underneath as darker colors.
+ *  Hansen is only blended when compareHansen is on.
+ *  Parses a copy of the buffer so the cache entry stays valid for re-paints. */
 async function parseAndPaintGeoTIFF(arrayBuffer, feature, featureId) {
-    const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
+    const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer.slice(0));
     const image = await tiff.getImage();
     const rasters = await image.readRasters();
 
     const probabilityData = rasters[0];
-    const trueData = rasters.length > 1 ? rasters[1] : null;
+    const trueData = (compareHansen && rasters.length > 1) ? rasters[1] : null;
     const width = image.getWidth();
     const height = image.getHeight();
 
@@ -202,6 +211,7 @@ async function sendPolygonToBackend(featureId) {
         if (!latestFeature) return;
 
         const arrayBuffer = await sendFeatureToBackend(latestFeature);
+        geotiffCache.set(featureId, { arrayBuffer: arrayBuffer.slice(0), feature: latestFeature });
         await parseAndPaintGeoTIFF(arrayBuffer, latestFeature, featureId);
     } catch (error) {
         console.error("Failed to process polygon:", error);
@@ -269,18 +279,40 @@ function renderImageOverlay(imageUrl, coordinates, featureId) {
 /** Selected year for prediction / map overlays (driven by the year-picker widget). */
 let selectedYear = 2024;
 
-async function addYearPickerWidget() {
+/** Re-paint every cached overlay with the current compareHansen setting (no backend). */
+async function repaintCachedOverlays() {
+    for (const [featureId, cached] of geotiffCache) {
+        await parseAndPaintGeoTIFF(cached.arrayBuffer, cached.feature, featureId);
+    }
+}
+
+async function addWidgets() {
     const response = await fetch('widgets.html');
     if (!response.ok) {
         throw new Error(`Failed to load widgets.html (${response.status})`);
     }
     const content = await response.text();
 
+    // Split widgets.html into separate year-picker and compare-toggle roots
+    const template = document.createElement('template');
+    template.innerHTML = content.trim();
+    const yearEl = template.content.querySelector('.year-picker');
+    const compareEl = template.content.querySelector('.compare-toggle');
+    if (!yearEl || !compareEl) {
+        throw new Error('widgets.html missing .year-picker or .compare-toggle');
+    }
+
     const yearPicker = new HtmlWidget({
-        content,
+        content: yearEl.outerHTML,
         position: 'top-right'
     });
     map.addControl(yearPicker);
+
+    const compareWidget = new HtmlWidget({
+        content: compareEl.outerHTML,
+        position: 'top-right'
+    });
+    map.addControl(compareWidget);
 
     const slider = document.getElementById('year-slider');
     const valueOut = document.getElementById('year-value');
@@ -305,7 +337,7 @@ async function addYearPickerWidget() {
             throw new Error(`Failed to update year (${response.status})`);
         }
         const data = await response.json();
-        const currentFeatures = draw.getAll(); 
+        const currentFeatures = draw.getAll();
         console.log('Current features:', currentFeatures);
         currentFeatures.features.forEach((feature) => {
             const featureId = feature.id;
@@ -316,9 +348,21 @@ async function addYearPickerWidget() {
     slider.addEventListener('input', syncYear);
     syncYear();
     slider.addEventListener('change', updateYear);
+    // Ensure backend config.TEST_YEAR matches the default slider year on load
+    await updateYear();
 
+    const compareCheckbox = document.getElementById('compare-hansen');
+    if (!compareCheckbox) return;
+
+    compareCheckbox.addEventListener('change', () => {
+        compareHansen = compareCheckbox.checked;
+        console.log('Compare Hansen:', compareHansen);
+        repaintCachedOverlays().catch((err) => {
+            console.error('Failed to re-paint overlays after compare toggle:', err);
+        });
+    });
 }
 
-addYearPickerWidget().catch((err) => {
-    console.error('Year picker widget failed to load:', err);
+addWidgets().catch((err) => {
+    console.error('Map widgets failed to load:', err);
 });
