@@ -1,5 +1,5 @@
 from typing import Annotated
-from fastapi import FastAPI, Body, Response
+from fastapi import FastAPI, Body, Response, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -14,7 +14,7 @@ from rasterio.transform import from_bounds
 from rasterio.io import MemoryFile
 from rasterio.features import geometry_mask
 from ee_connection import get_data_bbox
-from config import TROPIC_LAT, BOREAL_LAT, THRESHOLD
+import config
 from prediction_helpers import route_model_and_predict
 
 models = {}
@@ -59,6 +59,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.post("/api/update-year")
+async def update_year(body: dict = Body(...)):
+    year = body.get('year')
+    print(f"Updating year to {year}")
+    config.TEST_YEAR = year
+    return {"message": f"Year updated to {year}"}
 
 @app.post("/api/predict")
 async def predict(polygon: pydantic_models.GeoJSONFeature):

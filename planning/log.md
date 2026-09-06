@@ -39,3 +39,4 @@
 * Fixed remaining stack overflow: removed `draw.modechange` re-lock; defer `sendPolygonToBackend` with `setTimeout(0)` so `changeMode('static')` is not called inside Draw’s create/update stack
 * Disabled Draw toolbar (polygon/trash) during predict via `#map.draw-locked`; deferred modechange snap-back if draw mode is forced while predicting
 * Allow for creating multiple features and maintaining drawn pixels
+* Replaced placeholder HtmlWidget with a 2001–2026 year range slider; markup lives in `frontend/widgets.html` and is fetched by `app.js` into `selectedYear`

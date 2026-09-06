@@ -8,6 +8,9 @@
     <link href="https://unpkg.com/maplibre-gl@5.7.0/dist/maplibre-gl.css" rel="stylesheet" />
     <script src="https://unpkg.com/maplibre-gl@5.7.0/dist/maplibre-gl.js"></script>
 
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl-html-widget@latest/src/maplibre-gl-html-widget.css">
+    <script src="https://unpkg.com/maplibre-gl-html-widget@latest/src/maplibre-gl-html-widget.js"></script>
+
     <link href="https://unpkg.com/@mapbox/mapbox-gl-draw@1.4.3/dist/mapbox-gl-draw.css" rel="stylesheet" />
     <script src="https://unpkg.com/@mapbox/mapbox-gl-draw@1.4.3/dist/mapbox-gl-draw.js"></script>
 
@@ -34,6 +37,48 @@
             pointer-events: none;
             opacity: 0.45;
             cursor: not-allowed;
+        }
+
+        .year-picker {
+            min-width: 200px;
+            padding: 12px 14px;
+            font-family: system-ui, -apple-system, sans-serif;
+            color: #1a1a1a;
+        }
+
+        .year-picker__label {
+            display: block;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: #5a5a5a;
+            margin-bottom: 4px;
+        }
+
+        .year-picker__value {
+            display: block;
+            font-size: 28px;
+            font-weight: 700;
+            line-height: 1.1;
+            font-variant-numeric: tabular-nums;
+            margin-bottom: 10px;
+        }
+
+        .year-picker__slider {
+            width: 100%;
+            margin: 0;
+            accent-color: #2d6a4f;
+            cursor: pointer;
+        }
+
+        .year-picker__bounds {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 4px;
+            font-size: 11px;
+            color: #6b6b6b;
+            font-variant-numeric: tabular-nums;
         }
     </style>
 </head>

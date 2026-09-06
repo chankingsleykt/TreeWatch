@@ -237,3 +237,62 @@ function renderImageOverlay(imageUrl, coordinates, featureId) {
         });
     }
 }
+
+
+
+/** Selected year for prediction / map overlays (driven by the year-picker widget). */
+let selectedYear = 2024;
+
+async function addYearPickerWidget() {
+    const response = await fetch('widgets.html');
+    if (!response.ok) {
+        throw new Error(`Failed to load widgets.html (${response.status})`);
+    }
+    const content = await response.text();
+
+    const yearPicker = new HtmlWidget({
+        content,
+        position: 'top-right'
+    });
+    map.addControl(yearPicker);
+
+    const slider = document.getElementById('year-slider');
+    const valueOut = document.getElementById('year-value');
+    if (!slider || !valueOut) return;
+
+    const syncYear = () => {
+        selectedYear = Number(slider.value);
+        valueOut.textContent = String(selectedYear);
+        console.log('Selected year:', selectedYear);
+    };
+
+    const updateYear = async () => {
+        selectedYear = Number(slider.value);
+        const response = await fetch('api/update-year', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ year: selectedYear })
+        });
+        if (!response.ok) {
+            throw new Error(`Failed to update year (${response.status})`);
+        }
+        const data = await response.json();
+        const currentFeatures = draw.getAll(); 
+        console.log('Current features:', currentFeatures);
+        currentFeatures.features.forEach((feature) => {
+            const featureId = feature.id;
+            sendPolygonToBackend(featureId);
+        });
+    };
+
+    slider.addEventListener('input', syncYear);
+    syncYear();
+    slider.addEventListener('change', updateYear);
+
+}
+
+addYearPickerWidget().catch((err) => {
+    console.error('Year picker widget failed to load:', err);
+});

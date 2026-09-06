@@ -10,7 +10,7 @@ import sys
 from dotenv import load_dotenv
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "."))
 sys.path.append(project_root)
-from config import BANDS_IN_ORDER, TEST_YEAR
+import config
 from rasterio.transform import Affine
 
 # Hansen native projection — avoids synchronous EE getInfo() round trips
@@ -77,10 +77,10 @@ def get_data_bbox(polygon: shapely.Polygon) -> dict:
         ]]
     }
     bbox_geometry = ee.Geometry(bbox_geojson)
-
+    print(f"TEST_YEAR: {config.TEST_YEAR}")
     # extract landsat bands
-    landsat_image_lag = process_yearly_landsat(TEST_YEAR-1, 1, 1, TEST_YEAR, 1, 1)
-    landsat_image_current = process_yearly_landsat(TEST_YEAR, 1, 1, TEST_YEAR, 1, 1)
+    landsat_image_lag = process_yearly_landsat(config.TEST_YEAR-1, 1, 1, config.TEST_YEAR, 1, 1)
+    landsat_image_current = process_yearly_landsat(config.TEST_YEAR, 1, 1, config.TEST_YEAR, 1, 1)
     landsat_image = landsat_image_current.addBands(landsat_image_lag)
 
     # extract hansen bands for filtering
@@ -129,12 +129,12 @@ def get_data_bbox(polygon: shapely.Polygon) -> dict:
     
     treecover_mask = (landsat_hansen_pd['treecover2000'] > 50)
     lossyear_0_mask = (landsat_hansen_pd['lossyear'] == 0)
-    lossyear_after_mask = (landsat_hansen_pd['lossyear'] > TEST_YEAR - 2000)
+    lossyear_after_mask = (landsat_hansen_pd['lossyear'] > config.TEST_YEAR - 2000)
     
     valid_mask = treecover_mask & (lossyear_0_mask | lossyear_after_mask)
     
     return {
-        "data": landsat_hansen_pd[BANDS_IN_ORDER],
+        "data": landsat_hansen_pd[config.BANDS_IN_ORDER],
         "mask": valid_mask,
         "coords": (height, width),
         "transform": true_transform,
