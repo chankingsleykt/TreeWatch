@@ -44,18 +44,19 @@ def snap_bbox_to_grid(
     return west, south, east, north
 
 
-def get_data_bbox(polygon: shapely.Polygon) -> dict:
+def get_data_bbox(polygon: shapely.Polygon, year: int) -> dict:
     """
     Creates a GeoJSON of the bounding box containing the polygon, extracts the landsat image bands, filters by Hansen treecover and lossyear data,
-    and returns a pandas DataFrame with the landsat image data, and nan where treecover < 50 or if it's been deforested before TEST_YEAR
+    and returns a pandas DataFrame with the landsat image data, and nan where treecover < 50 or if it's been deforested before ``year``
     
     Args:
         polygon: A Shapely Polygon geometry
+        year: Calendar year for Landsat / Hansen loss labeling (e.g. 2024)
         
     Returns:
         dict with keys:
         "data": A pandas DataFrame with the landsat image bands and the true Hansen loss values, or None on error
-        "mask": A numpy array with the same length as data, True only if treecover > 50 and lossyear = 0 or lossyear > TEST_YEAR, or None on error
+        "mask": A numpy array with the same length as data, True only if treecover > 50 and lossyear = 0 or lossyear >= (year - 2000), or None on error
         "coords": (height, width) tuple of the bounding box grid dimensions, or None on error
         "transform": Affine transform for reconverting each row in the dataframe to a pixel in the polygon, or None on error
         "error": "polygon too large" if the request exceeds Earth Engine size limits, the original error message for other failures, or None on success
@@ -75,10 +76,10 @@ def get_data_bbox(polygon: shapely.Polygon) -> dict:
         ]]
     }
     bbox_geometry = ee.Geometry(bbox_geojson)
-    print(f"TEST_YEAR: {config.TEST_YEAR}")
+    print(f"year: {year}")
     # extract landsat bands
-    landsat_image_lag = process_yearly_landsat(config.TEST_YEAR-1, 1, 1, config.TEST_YEAR, 1, 1)
-    landsat_image_current = process_yearly_landsat(config.TEST_YEAR, 1, 1, config.TEST_YEAR, 1, 1)
+    landsat_image_lag = process_yearly_landsat(year - 1, 1, 1, year, 1, 1)
+    landsat_image_current = process_yearly_landsat(year, 1, 1, year, 1, 1)
     landsat_image = landsat_image_current.addBands(landsat_image_lag)
 
     # extract hansen bands for filtering
@@ -123,7 +124,7 @@ def get_data_bbox(polygon: shapely.Polygon) -> dict:
     )
 
     # 6. Tabular Conversion & Masking
-    hansen_year = config.TEST_YEAR - 2000
+    hansen_year = year - 2000
     landsat_hansen_pd = pd.DataFrame(raw_array.flatten())
     
     treecover_mask = (landsat_hansen_pd['treecover2000'] > 50)

@@ -58,13 +58,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.post("/api/update-year")
-async def update_year(body: dict = Body(...)):
-    year = body.get('year')
-    print(f"Updating year to {year}")
-    config.TEST_YEAR = year
-    return {"message": f"Year updated to {year}"}
-
 @app.post("/api/toggle-compare")
 async def toggle_compare(body: dict = Body(...)):
     compare = body.get('compare')
@@ -73,12 +66,13 @@ async def toggle_compare(body: dict = Body(...)):
     return {"message": f"Compare toggled to {compare}"}
 
 @app.post("/api/predict")
-async def predict(polygon: pydantic_models.GeoJSONFeature):
-    polygon = shape(polygon.geometry)
-    min_lon, min_lat, max_lon, max_lat = polygon.bounds
+async def predict(body: pydantic_models.PredictRequest):
+    polygon = shape(body.feature.geometry)
+    year = body.year
+    print(f"Predict for year {year}")
 
     centroid = polygon.centroid
-    result = get_data_bbox(polygon)
+    result = get_data_bbox(polygon, year)
     if result["error"] is not None:
         return result['error']
     data = result["data"]

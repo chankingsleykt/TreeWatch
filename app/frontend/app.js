@@ -92,14 +92,14 @@ map.on('draw.modechange', (e) => {
     }
 });
 
-/** POST a GeoJSON feature to /api/predict and return the GeoTIFF ArrayBuffer. */
+/** POST a GeoJSON feature + year to /api/predict and return the GeoTIFF ArrayBuffer. */
 async function sendFeatureToBackend(feature) {
     const response = await fetch('api/predict', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify(feature)
+        body: JSON.stringify({ year: selectedYear, feature })
     });
 
     if (!response.ok) {
@@ -154,6 +154,9 @@ function rgbCss(rgb) {
 
 /** Cache of last GeoTIFF per feature so compare toggle can re-paint without /api/predict. */
 const geotiffCache = new Map(); // featureId -> { arrayBuffer, feature }
+
+/** Selected year for prediction / map overlays (driven by the year-picker widget). */
+let selectedYear = 2024;
 
 /** When false, Hansen band is ignored (trueData treated as null) on paint. */
 let compareHansen = true;
@@ -292,9 +295,6 @@ function renderImageOverlay(imageUrl, coordinates, featureId) {
 
 
 
-/** Selected year for prediction / map overlays (driven by the year-picker widget). */
-let selectedYear = 2024;
-
 /** Re-paint every cached overlay with the current compareHansen setting (no backend). */
 async function repaintCachedOverlays() {
     for (const [featureId, cached] of geotiffCache) {
@@ -359,32 +359,18 @@ async function addWidgets() {
         console.log('Selected year:', selectedYear);
     };
 
-    const updateYear = async () => {
-        selectedYear = Number(slider.value);
-        const response = await fetch('api/update-year', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ year: selectedYear })
-        });
-        if (!response.ok) {
-            throw new Error(`Failed to update year (${response.status})`);
-        }
-        const data = await response.json();
+    const updateYear = () => {
+        syncYear();
         const currentFeatures = draw.getAll();
         console.log('Current features:', currentFeatures);
         currentFeatures.features.forEach((feature) => {
-            const featureId = feature.id;
-            sendPolygonToBackend(featureId);
+            sendPolygonToBackend(feature.id);
         });
     };
 
     slider.addEventListener('input', syncYear);
     syncYear();
     slider.addEventListener('change', updateYear);
-    // Ensure backend config.TEST_YEAR matches the default slider year on load
-    await updateYear();
 
     const compareCheckbox = document.getElementById('compare-hansen');
     const legend = document.getElementById('confusion-legend');

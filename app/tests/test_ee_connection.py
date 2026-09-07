@@ -14,7 +14,7 @@ def test_filters_lossyear():
     (-105.95753174609376,56.86858146188767),
     (-105.96113663500978,56.86858146188767),
     (-105.96113663500978,56.86698642911384)])
-   result = get_data_bbox(loss_24)
+   result = get_data_bbox(loss_24, 2024)
    print(result["mask"])
    assert np.any(result["mask"] == False)
 
@@ -26,7 +26,7 @@ def test_filters_treecover():
      (-105.84143542846874,56.836534476984184),
      (-105.8474435766621,56.836534476984184),
      (-105.8474435766621,56.83390507696947)])
-    result = get_data_bbox(lake)
+    result = get_data_bbox(lake, 2024)
     print(result["mask"])
     assert (result["mask"] == False).all()
 
@@ -44,7 +44,7 @@ def test_spatial_integrity():
     
     # 2. Run the extraction pipeline
     # (Requires Earth Engine to be initialized before running pytest)
-    result = get_data_bbox(test_polygon)
+    result = get_data_bbox(test_polygon, 2024)
     landsat_pd = result["data"]
     mask = result["mask"]
     height, width = result["coords"]

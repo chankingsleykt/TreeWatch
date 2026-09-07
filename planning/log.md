@@ -50,3 +50,7 @@
 * Added Compare Hansen toggle widget; caches GeoTIFF ArrayBuffers per feature and re-paints overlays client-side when toggled (trueData ignored when off; no backend re-call)
 * Retuned pred/Hansen blend palette (`PRED_*` / `TRUE_*` / `PRED_ALPHA`) so mixes read as TN green, FN red-brown, FP green-brown, TP red
 * Added confusion-matrix legend widget (TP/TN/FP/FN, Positive = loss); swatches driven by the same blend function; hidden when Compare Hansen is off
+
+# Sep 7, 2026
+* `/api/predict` now takes `year` from the request body (`PredictRequest`); removed `config.TEST_YEAR` and `/api/update-year`
+* `get_data_bbox(polygon, year)` uses the passed year; frontend sends `{ year: selectedYear, feature }` on predict; year slider only re-predicts locally

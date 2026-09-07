@@ -1,1 +1,1 @@
-from pydantic_models.feature import GeoJSONFeature
+from pydantic_models.feature import GeoJSONFeature, PredictRequest
