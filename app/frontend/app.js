@@ -127,6 +127,31 @@ function classColor(val, forestRGB, lossRGB) {
     return null;
 }
 
+/**
+ * Blend palette: pred over Hansen truth.
+ * Tuned so mixes read as confusion colors (Positive = loss):
+ *   TN (no/no) → green, FN (loss/no) → red-brown,
+ *   FP (no/loss) → green-brown, TP (loss/loss) → red.
+ * Truth weighs more (PRED_ALPHA < 0.5) so disagreements pull toward Hansen's hue.
+ */
+const PRED_FOREST = [10, 190, 60];
+const PRED_LOSS = [250, 30, 30];
+const TRUE_FOREST = [0, 150, 50];
+const TRUE_LOSS = [200, 35, 15];
+const PRED_ALPHA = 0.3;
+
+function blendRGB(predRGB, truthRGB) {
+    return [
+        Math.round(predRGB[0] * PRED_ALPHA + truthRGB[0] * (1 - PRED_ALPHA)),
+        Math.round(predRGB[1] * PRED_ALPHA + truthRGB[1] * (1 - PRED_ALPHA)),
+        Math.round(predRGB[2] * PRED_ALPHA + truthRGB[2] * (1 - PRED_ALPHA)),
+    ];
+}
+
+function rgbCss(rgb) {
+    return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+}
+
 /** Cache of last GeoTIFF per feature so compare toggle can re-paint without /api/predict. */
 const geotiffCache = new Map(); // featureId -> { arrayBuffer, feature }
 
@@ -134,7 +159,7 @@ const geotiffCache = new Map(); // featureId -> { arrayBuffer, feature }
 let compareHansen = true;
 
 /** Parse a GeoTIFF ArrayBuffer, paint class values onto a canvas, and overlay on the map.
- *  Band 0 = prediction; band 1 (if present) = Hansen truth, blended underneath as darker colors.
+ *  Band 0 = prediction; band 1 (if present) = Hansen truth, blended underneath.
  *  Hansen is only blended when compareHansen is on.
  *  Parses a copy of the buffer so the cache entry stays valid for re-paints. */
 async function parseAndPaintGeoTIFF(arrayBuffer, feature, featureId) {
@@ -146,12 +171,6 @@ async function parseAndPaintGeoTIFF(arrayBuffer, feature, featureId) {
     const trueData = (compareHansen && rasters.length > 1) ? rasters[1] : null;
     const width = image.getWidth();
     const height = image.getHeight();
-
-    const PRED_FOREST = [0, 128, 0];
-    const PRED_LOSS = [255, 71, 87];
-    const TRUE_FOREST = [0, 72, 0];       // darker green
-    const TRUE_LOSS = [140, 35, 45];      // darker red
-    const PRED_ALPHA = 0.7;               // prediction dominates the blend
 
     const canvas = document.createElement('canvas');
     canvas.width = width;
@@ -169,10 +188,7 @@ async function parseAndPaintGeoTIFF(arrayBuffer, feature, featureId) {
         if (trueData) {
             const truthRGB = classColor(trueData[i], TRUE_FOREST, TRUE_LOSS);
             if (truthRGB && predRGB) {
-                // Darker truth base + brighter prediction on top
-                r = Math.round(predRGB[0] * PRED_ALPHA + truthRGB[0] * (1 - PRED_ALPHA));
-                g = Math.round(predRGB[1] * PRED_ALPHA + truthRGB[1] * (1 - PRED_ALPHA));
-                b = Math.round(predRGB[2] * PRED_ALPHA + truthRGB[2] * (1 - PRED_ALPHA));
+                [r, g, b] = blendRGB(predRGB, truthRGB);
                 a = 255;
             } else if (predRGB) {
                 [r, g, b] = predRGB;
@@ -293,13 +309,14 @@ async function addWidgets() {
     }
     const content = await response.text();
 
-    // Split widgets.html into separate year-picker and compare-toggle roots
+    // Split widgets.html into separate year-picker, compare-toggle, and legend roots
     const template = document.createElement('template');
     template.innerHTML = content.trim();
     const yearEl = template.content.querySelector('.year-picker');
     const compareEl = template.content.querySelector('.compare-toggle');
-    if (!yearEl || !compareEl) {
-        throw new Error('widgets.html missing .year-picker or .compare-toggle');
+    const legendEl = template.content.querySelector('.confusion-legend');
+    if (!yearEl || !compareEl || !legendEl) {
+        throw new Error('widgets.html missing .year-picker, .compare-toggle, or .confusion-legend');
     }
 
     const yearPicker = new HtmlWidget({
@@ -313,6 +330,24 @@ async function addWidgets() {
         position: 'top-right'
     });
     map.addControl(compareWidget);
+
+    const legendWidget = new HtmlWidget({
+        content: legendEl.outerHTML,
+        position: 'top-right'
+    });
+    map.addControl(legendWidget);
+
+    // Legend swatches = same blends used when painting (Positive = loss)
+    const legendSwatches = {
+        tp: blendRGB(PRED_LOSS, TRUE_LOSS),
+        tn: blendRGB(PRED_FOREST, TRUE_FOREST),
+        fp: blendRGB(PRED_LOSS, TRUE_FOREST),
+        fn: blendRGB(PRED_FOREST, TRUE_LOSS),
+    };
+    for (const [key, rgb] of Object.entries(legendSwatches)) {
+        const swatch = document.querySelector(`.confusion-legend__swatch--${key}`);
+        if (swatch) swatch.style.background = rgbCss(rgb);
+    }
 
     const slider = document.getElementById('year-slider');
     const valueOut = document.getElementById('year-value');
@@ -352,10 +387,18 @@ async function addWidgets() {
     await updateYear();
 
     const compareCheckbox = document.getElementById('compare-hansen');
+    const legend = document.getElementById('confusion-legend');
     if (!compareCheckbox) return;
+
+    const syncLegendVisibility = () => {
+        if (!legend) return;
+        legend.classList.toggle('is-hidden', !compareCheckbox.checked);
+    };
+    syncLegendVisibility();
 
     compareCheckbox.addEventListener('change', () => {
         compareHansen = compareCheckbox.checked;
+        syncLegendVisibility();
         console.log('Compare Hansen:', compareHansen);
         repaintCachedOverlays().catch((err) => {
             console.error('Failed to re-paint overlays after compare toggle:', err);

@@ -111,6 +111,63 @@
         .compare-toggle__text {
             line-height: 1.2;
         }
+
+        .confusion-legend {
+            min-width: 200px;
+            padding: 12px 14px;
+            font-family: system-ui, -apple-system, sans-serif;
+            color: #1a1a1a;
+        }
+
+        .confusion-legend.is-hidden {
+            display: none;
+        }
+
+        .confusion-legend__title {
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: #5a5a5a;
+            margin-bottom: 10px;
+        }
+
+        .confusion-legend__list {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .confusion-legend__item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .confusion-legend__swatch {
+            width: 18px;
+            height: 18px;
+            border-radius: 3px;
+            flex-shrink: 0;
+            box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+            background: #ccc;
+        }
+
+        .confusion-legend__label {
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            line-height: 1.2;
+        }
+
+        .confusion-legend__note {
+            margin: 10px 0 0;
+            font-size: 11px;
+            color: #6b6b6b;
+        }
     </style>
 </head>
 <body>

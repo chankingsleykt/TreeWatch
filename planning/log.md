@@ -48,3 +48,5 @@
 * `parseAndPaintGeoTIFF` blends Hansen truth (darker green/red) under prediction when band 1 is present
 * Call `updateYear()` on year-picker init so `/api/update-year` sets `config.TEST_YEAR` to the default 2024 at startup
 * Added Compare Hansen toggle widget; caches GeoTIFF ArrayBuffers per feature and re-paints overlays client-side when toggled (trueData ignored when off; no backend re-call)
+* Retuned pred/Hansen blend palette (`PRED_*` / `TRUE_*` / `PRED_ALPHA`) so mixes read as TN green, FN red-brown, FP green-brown, TP red
+* Added confusion-matrix legend widget (TP/TN/FP/FN, Positive = loss); swatches driven by the same blend function; hidden when Compare Hansen is off

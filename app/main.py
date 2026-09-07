@@ -91,11 +91,11 @@ async def predict(polygon: pydantic_models.GeoJSONFeature):
     prediction_map = values_to_raster(predictions, mask, height, width, polygon, transform)
     print(prediction_map)
 
-    include_hansen = 'loss' in data_masked.columns
+    include_hansen = 'loss_true' in data_masked.columns
     hansen_map = None
     if include_hansen:
         # Match prediction encoding: 1 = loss, -1 = no loss (within valid forest mask)
-        hansen_truth = np.where(data_masked['loss'].to_numpy(), 1, -1).astype(np.float32)
+        hansen_truth = np.where(data_masked['loss_true'].to_numpy(), 1, -1).astype(np.float32)
         hansen_map = values_to_raster(hansen_truth, mask, height, width, polygon, transform)
 
     band_count = 2 if include_hansen else 1

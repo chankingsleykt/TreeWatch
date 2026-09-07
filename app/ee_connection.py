@@ -128,16 +128,16 @@ def get_data_bbox(polygon: shapely.Polygon) -> dict:
     
     treecover_mask = (landsat_hansen_pd['treecover2000'] > 50)
     lossyear_0_mask = (landsat_hansen_pd['lossyear'] == 0)
-    lossyear_after_mask = (landsat_hansen_pd['lossyear'] > hansen_year)
+    lossyear_after_mask = (landsat_hansen_pd['lossyear'] >= hansen_year)
     
     valid_mask = treecover_mask & (lossyear_0_mask | lossyear_after_mask)
     print(landsat_hansen_pd['lossyear'].sort_values().unique())
 
     data = landsat_hansen_pd[config.BANDS_IN_ORDER].copy()
     if hansen_year != 26:
-        loss = (landsat_hansen_pd['lossyear'] == hansen_year) | (landsat_hansen_pd['lossyear'] == 25)
-        data['loss'] = loss
-        print(data['loss'].value_counts())
+        loss_true = (landsat_hansen_pd['lossyear'] == hansen_year)
+        data['loss_true'] = loss_true
+        print(data['loss_true'].value_counts())
     print(data.head())
     return {
         "data": data,

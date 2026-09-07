@@ -27,3 +27,26 @@
     <span class="compare-toggle__text">Compare Hansen</span>
   </label>
 </div>
+
+<div class="confusion-legend" id="confusion-legend" aria-label="Confusion matrix legend">
+  <div class="confusion-legend__title">Legend</div>
+  <ul class="confusion-legend__list">
+    <li class="confusion-legend__item">
+      <span class="confusion-legend__swatch confusion-legend__swatch--tp" aria-hidden="true"></span>
+      <span class="confusion-legend__label">True Positive</span>
+    </li>
+    <li class="confusion-legend__item">
+      <span class="confusion-legend__swatch confusion-legend__swatch--tn" aria-hidden="true"></span>
+      <span class="confusion-legend__label">True Negative</span>
+    </li>
+    <li class="confusion-legend__item">
+      <span class="confusion-legend__swatch confusion-legend__swatch--fp" aria-hidden="true"></span>
+      <span class="confusion-legend__label">False Positive</span>
+    </li>
+    <li class="confusion-legend__item">
+      <span class="confusion-legend__swatch confusion-legend__swatch--fn" aria-hidden="true"></span>
+      <span class="confusion-legend__label">False Negative</span>
+    </li>
+  </ul>
+  <p class="confusion-legend__note">Positive = loss</p>
+</div>
