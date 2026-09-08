@@ -49,12 +49,12 @@ map.on('load', () => {
 map.on('draw.create', (e) => {
     const featureId = e.features[0].id;
     console.log('Created Feature ID:', featureId);
-    setTimeout(() => sendPolygonToBackend(featureId), 0);
+    setTimeout(() => newPolygon(featureId), 0);
 });
 map.on('draw.update', (e) => {
     const featureId = e.features[0].id;
     console.log('Updated Feature ID:', featureId);
-    setTimeout(() => sendPolygonToBackend(featureId), 0);
+    setTimeout(() => newPolygon(featureId), 0);
 });
 
 // Listen for deletion to clean up the overlay
@@ -70,16 +70,25 @@ map.on('draw.delete', (e) => {
 let isPredicting = false;
 let ignoreDrawEvents = false;
 
+function setYearPickerLocked(locked) {
+    const slider = document.getElementById('year-slider');
+    const yearPicker = slider?.closest('.year-picker');
+    if (slider) slider.disabled = locked;
+    if (yearPicker) yearPicker.classList.toggle('is-locked', locked);
+}
+
 function lockDraw() {
     if (draw.getMode() !== 'static') {
         draw.changeMode('static');
     }
     // StaticMode does not disable the toolbar — block polygon/trash clicks during predict
     map.getContainer().classList.add('draw-locked');
+    setYearPickerLocked(true);
 }
 
 function unlockDraw() {
     map.getContainer().classList.remove('draw-locked');
+    setYearPickerLocked(false);
     draw.changeMode('simple_select');
 }
 
@@ -217,34 +226,49 @@ async function parseAndPaintGeoTIFF(arrayBuffer, feature, featureId) {
     renderImageOverlay(dataUrl, coordinates, featureId);
 }
 
-/** Orchestrates predict + paint for a drawn feature (used by draw.create / draw.update). */
+/** Predict + paint one feature (no draw lock). Used by newPolygon and year refresh. */
 async function sendPolygonToBackend(featureId) {
+    const latestFeature = draw.get(featureId);
+    if (!latestFeature) return;
+
+    const arrayBuffer = await sendFeatureToBackend(latestFeature);
+    geotiffCache.set(featureId, { arrayBuffer: arrayBuffer.slice(0), feature: latestFeature });
+    await parseAndPaintGeoTIFF(arrayBuffer, latestFeature, featureId);
+}
+
+/** Start a predict session: lock draw and set the single-flight flag. */
+function startPredictSession() {
+    isPredicting = true;
+    // Safe when called outside Draw's create/update event stack (see setTimeout on draw events)
+    lockDraw();
+}
+
+/** End a predict session: restore draw mode and clear the single-flight lock. */
+function endPredictSession() {
+    // ignoreDrawEvents blocks any draw.update fired by the mode restore.
+    ignoreDrawEvents = true;
+    isPredicting = false;
+    try {
+        unlockDraw();
+    } catch (err) {
+        console.error('Failed to restore draw mode:', err);
+    }
+    ignoreDrawEvents = false;
+}
+
+/** Orchestrates predict + paint for a newly drawn/edited feature. */
+async function newPolygon(featureId) {
     if (ignoreDrawEvents) return;
     if (isPredicting) return;
-    isPredicting = true;
-    // Safe here: we are outside Draw's create/update event stack (see setTimeout above)
-    lockDraw();
+    startPredictSession();
 
     try {
-        const latestFeature = draw.get(featureId);
-        if (!latestFeature) return;
-
-        const arrayBuffer = await sendFeatureToBackend(latestFeature);
-        geotiffCache.set(featureId, { arrayBuffer: arrayBuffer.slice(0), feature: latestFeature });
-        await parseAndPaintGeoTIFF(arrayBuffer, latestFeature, featureId);
+        await sendPolygonToBackend(featureId);
     } catch (error) {
         console.error("Failed to process polygon:", error);
         draw.delete(featureId);
     } finally {
-        // ignoreDrawEvents blocks any draw.update fired by the mode restore.
-        ignoreDrawEvents = true;
-        isPredicting = false;
-        try {
-            unlockDraw();
-        } catch (err) {
-            console.error('Failed to restore draw mode:', err);
-        }
-        ignoreDrawEvents = false;
+        endPredictSession();
     }
 }
 
@@ -354,18 +378,33 @@ async function addWidgets() {
     if (!slider || !valueOut) return;
 
     const syncYear = () => {
+        if (isPredicting) return;
         selectedYear = Number(slider.value);
         valueOut.textContent = String(selectedYear);
         console.log('Selected year:', selectedYear);
     };
 
-    const updateYear = () => {
+    const updateYear = async () => {
+        if (isPredicting) return;
         syncYear();
-        const currentFeatures = draw.getAll();
-        console.log('Current features:', currentFeatures);
-        currentFeatures.features.forEach((feature) => {
-            sendPolygonToBackend(feature.id);
-        });
+        console.log('Updated year:', selectedYear);
+
+        const features = draw.getAll().features;
+        if (features.length === 0) return;
+
+        startPredictSession();
+        try {
+            for (const feature of features) {
+                try {
+                    await sendPolygonToBackend(feature.id);
+                } catch (error) {
+                    console.error("Failed to process polygon:", error);
+                    draw.delete(feature.id);
+                }
+            }
+        } finally {
+            endPredictSession();
+        }
     };
 
     slider.addEventListener('input', syncYear);

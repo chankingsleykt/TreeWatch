@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FastAPI + MapLibre + Draw</title>
+    <title>ForestWatch</title>
     
     <link href="https://unpkg.com/maplibre-gl@5.7.0/dist/maplibre-gl.css" rel="stylesheet" />
     <script src="https://unpkg.com/maplibre-gl@5.7.0/dist/maplibre-gl.js"></script>
@@ -70,6 +70,15 @@
             margin: 0;
             accent-color: #2d6a4f;
             cursor: pointer;
+        }
+
+        .year-picker.is-locked {
+            opacity: 0.55;
+            pointer-events: none;
+        }
+
+        .year-picker__slider:disabled {
+            cursor: not-allowed;
         }
 
         .year-picker__bounds {

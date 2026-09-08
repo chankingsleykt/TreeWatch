@@ -54,3 +54,6 @@
 # Sep 7, 2026
 * `/api/predict` now takes `year` from the request body (`PredictRequest`); removed `config.TEST_YEAR` and `/api/update-year`
 * `get_data_bbox(polygon, year)` uses the passed year; frontend sends `{ year: selectedYear, feature }` on predict; year slider only re-predicts locally
+* Year picker locks while predicting (`disabled` + `is-locked`); year `input`/`change` handlers no-op when `isPredicting`
+* Year change now batch-predicts all drawn features under one lock (`sendPolygonToBackend` core + `newPolygon` for draw create/update); fixes only-first-feature update when `isPredicting` skipped siblings
+* Extracted `startPredictSession` / `endPredictSession` for shared draw lock around predict
