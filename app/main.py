@@ -39,7 +39,7 @@ async def lifespan(app: FastAPI):
     models.clear()
 
 
-app = FastAPI(title="ForestWatch", lifespan=lifespan)
+app = FastAPI(title="TreeWatch", lifespan=lifespan)
 
 
 origins = [
