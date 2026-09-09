@@ -57,3 +57,7 @@
 * Year picker locks while predicting (`disabled` + `is-locked`); year `input`/`change` handlers no-op when `isPredicting`
 * Year change now batch-predicts all drawn features under one lock (`sendPolygonToBackend` core + `newPolygon` for draw create/update); fixes only-first-feature update when `isPredicting` skipped siblings
 * Extracted `startPredictSession` / `endPredictSession` for shared draw lock around predict
+
+# Sep 8, 2026
+* Added service account compatibility so the app can be run on the cloud
+* Frontend alerts "polygon too large!" when `/api/predict` returns that error payload; other non-TIFF responses still show the generic "Backend crashed!" alert

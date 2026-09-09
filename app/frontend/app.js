@@ -122,7 +122,11 @@ async function sendFeatureToBackend(feature) {
     if (view[0] !== 73 && view[0] !== 77) {
         const badPayload = new TextDecoder().decode(arrayBuffer);
         console.error("CRITICAL ERROR: Backend did NOT send a TIFF. It sent this text:", badPayload);
-        alert("Backend crashed! Check the browser console to read the Python traceback.");
+        if (badPayload.includes('polygon too large')) {
+            alert('polygon too large!');
+        } else {
+            alert("Backend crashed! Check the browser console to read the Python traceback.");
+        }
         throw new Error('Backend did not return a GeoTIFF');
     }
 

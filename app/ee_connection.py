@@ -19,6 +19,19 @@ HANSEN_SCALE_M = 30
 
 load_dotenv()
 project_id = os.getenv("GOOGLE_CLOUD_PROJECT_ID") # insert your id here
+sa_json = os.getenv("GEE_SERVICE_ACCOUNT_JSON")
+if sa_json:
+    credentials = ee.ServiceAccountCredentials(
+        email=None,  # or the SA email if you prefer
+        key_data=sa_json,  # raw JSON string
+    )
+
+    ee.Initialize(credentials, project=project_id)
+else:
+    # Local dev only
+    print('Authenticating locally')
+    ee.Authenticate(force=False)
+    ee.Initialize(project=project_id)
 
 ee.Authenticate(force=False)
 ee.Initialize(project=project_id)
