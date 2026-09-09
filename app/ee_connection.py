@@ -33,9 +33,6 @@ else:
     ee.Authenticate(force=False)
     ee.Initialize(project=project_id)
 
-ee.Authenticate(force=False)
-ee.Initialize(project=project_id)
-
 
 def snap_bbox_to_grid(
     min_lon: float,
