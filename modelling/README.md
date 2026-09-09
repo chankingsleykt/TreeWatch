@@ -13,7 +13,8 @@ Welcome to TreeWatch! This project detects deforestation events by training ML m
 # 🚀 Installation and Usage
 
 ## App 
-
+Check it out here! https://treewatch.onrender.com
+Note that as I used the Free tier, the app will spin down after 15 minutes of inactivity. You may have to wait for around one minute for the app to start up.
 
 ## Model Evaluation
 1. Download the libraries in requirements.txt
