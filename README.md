@@ -16,6 +16,6 @@ Welcome to TreeWatch! This project detects deforestation events by training ML m
 Check it out here! https://treewatch.onrender.com
 Note that as I used the Free tier, the app will spin down after 15 minutes of inactivity. You may have to wait for around one minute for the app to start up.
 
-## Model Evaluation
+## Code
 1. Download the libraries in requirements.txt
 2. Check out classical_ml.ipynb to compare models on the datasets I extracted. If you'd like to explore how I gathered the data, check out data_collection.ipynb, though you'll need a Google Cloud Project ID to run the code
