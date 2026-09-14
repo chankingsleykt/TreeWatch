@@ -86,7 +86,6 @@ def get_data_bbox(polygon: shapely.Polygon, year: int) -> dict:
         ]]
     }
     bbox_geometry = ee.Geometry(bbox_geojson)
-    print(f"year: {year}")
     # extract landsat bands
     landsat_image_lag = process_yearly_landsat(year - 1, 1, 1, year, 1, 1)
     landsat_image_current = process_yearly_landsat(year, 1, 1, year, 1, 1)
@@ -118,7 +117,6 @@ def get_data_bbox(polygon: shapely.Polygon, year: int) -> dict:
         response.raise_for_status() 
     except ee.ee_exception.EEException as e:
         if "must be less than or equal to" in str(e):
-            print('polygon too large!')
             return {"data": None, "mask": None, "coords": None, "transform": None, "error": "polygon too large"}
         return {"data": None, "mask": None, "coords": None, "transform": None, "error": str(e)}
         
@@ -142,14 +140,12 @@ def get_data_bbox(polygon: shapely.Polygon, year: int) -> dict:
     lossyear_after_mask = (landsat_hansen_pd['lossyear'] >= hansen_year)
     
     valid_mask = treecover_mask & (lossyear_0_mask | lossyear_after_mask)
-    print(landsat_hansen_pd['lossyear'].sort_values().unique())
 
     data = landsat_hansen_pd[config.BANDS_IN_ORDER].copy()
     if hansen_year != 26:
         loss_true = (landsat_hansen_pd['lossyear'] == hansen_year)
         data['loss_true'] = loss_true
-        print(data['loss_true'].value_counts())
-    print(data.head())
+
     return {
         "data": data,
         "mask": valid_mask,

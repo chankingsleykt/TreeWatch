@@ -48,19 +48,16 @@ map.on('load', () => {
 // recurses with Draw's own post-create transition (max call stack exceeded).
 map.on('draw.create', (e) => {
     const featureId = e.features[0].id;
-    console.log('Created Feature ID:', featureId);
     setTimeout(() => newPolygon(featureId), 0);
 });
 map.on('draw.update', (e) => {
     const featureId = e.features[0].id;
-    console.log('Updated Feature ID:', featureId);
     setTimeout(() => newPolygon(featureId), 0);
 });
 
 // Listen for deletion to clean up the overlay
 map.on('draw.delete', (e) => {
     const featureId = e.features[0].id;
-    console.log('Deleted Feature ID:', featureId);
     geotiffCache.delete(featureId);
     if (map.getLayer('prediction-overlay-layer-' + featureId)) map.removeLayer('prediction-overlay-layer-' + featureId);
     if (map.getSource('prediction-overlay-' + featureId)) map.removeSource('prediction-overlay-' + featureId);
@@ -385,13 +382,11 @@ async function addWidgets() {
         if (isPredicting) return;
         selectedYear = Number(slider.value);
         valueOut.textContent = String(selectedYear);
-        console.log('Selected year:', selectedYear);
     };
 
     const updateYear = async () => {
         if (isPredicting) return;
         syncYear();
-        console.log('Updated year:', selectedYear);
 
         const features = draw.getAll().features;
         if (features.length === 0) return;
@@ -428,7 +423,6 @@ async function addWidgets() {
     compareCheckbox.addEventListener('change', () => {
         compareHansen = compareCheckbox.checked;
         syncLegendVisibility();
-        console.log('Compare Hansen:', compareHansen);
         repaintCachedOverlays().catch((err) => {
             console.error('Failed to re-paint overlays after compare toggle:', err);
         });

@@ -61,7 +61,6 @@ app.add_middleware(
 @app.post("/api/toggle-compare")
 async def toggle_compare(body: dict = Body(...)):
     compare = body.get('compare')
-    print(f"Toggling compare to {compare}")
     config.COMPARE = compare
     return {"message": f"Compare toggled to {compare}"}
 
@@ -69,7 +68,6 @@ async def toggle_compare(body: dict = Body(...)):
 async def predict(body: pydantic_models.PredictRequest):
     polygon = shape(body.feature.geometry)
     year = body.year
-    print(f"Predict for year {year}")
 
     centroid = polygon.centroid
     result = get_data_bbox(polygon, year)
@@ -83,7 +81,6 @@ async def predict(body: pydantic_models.PredictRequest):
     features = data_masked[config.BANDS_IN_ORDER]
     predictions = route_model_and_predict(centroid, features, models)
     prediction_map = values_to_raster(predictions, mask, height, width, polygon, transform)
-    print(prediction_map)
 
     include_hansen = 'loss_true' in data_masked.columns
     hansen_map = None
