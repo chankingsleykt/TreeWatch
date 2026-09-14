@@ -61,3 +61,7 @@
 # Sep 8, 2026
 * Added service account compatibility so the app can be run on the cloud
 * Frontend alerts "polygon too large!" when `/api/predict` returns that error payload; other non-TIFF responses still show the generic "Backend crashed!" alert
+
+# Sep 9, 2026
+* `route_model_and_predict` returns an empty array when Hansen masking leaves no forest pixels (avoids XGBoost `predict_proba` `[:, 1]` IndexError on shape `(0, 0)`)
+* Inclusive latitude bounds for biome routing (`±TROPIC_LAT`, `BOREAL_LAT`) so exact boundary centroids no longer leave `active_model` unset; invalid latitudes raise `ValueError`

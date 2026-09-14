@@ -4,20 +4,23 @@ from rasterio.features import geometry_mask
 from config import TROPIC_LAT, BOREAL_LAT, THRESHOLD
 
 def route_model_and_predict(centroid, data, models):
+    if len(data) == 0:
+        return np.array([], dtype=np.float32)
 
-
-    if -TROPIC_LAT < centroid.y < TROPIC_LAT:
+    if -TROPIC_LAT <= centroid.y <= TROPIC_LAT:
         # tropical
-        active_model=models['tropical']
+        active_model = models['tropical']
     elif TROPIC_LAT < centroid.y < BOREAL_LAT:
         # temperate north
-        active_model=models['temperate']
-    elif -90 < centroid.y < -TROPIC_LAT:
+        active_model = models['temperate']
+    elif -90 <= centroid.y < -TROPIC_LAT:
         # temperate south
-        active_model=models['temperate']
-    elif BOREAL_LAT < centroid.y < 90:
+        active_model = models['temperate']
+    elif BOREAL_LAT <= centroid.y <= 90:
         # boreal
-        active_model=models['boreal']
+        active_model = models['boreal']
+    else:
+        raise ValueError(f"Centroid latitude {centroid.y} is outside [-90, 90]")
 
     raw_probs = active_model.predict_proba(data)[:, 1]
     predictions = np.where(raw_probs > 0.5, 1, -1)
